@@ -215,13 +215,18 @@ if st.button("Run Query"):
     if where_clause:
         query += f" WHERE {where_clause}"
 
-    df = session.sql(query).to_pandas()
+    try:
+        with st.spinner("Running query... ⏳"):
+            df = session.sql(query, timeout=180).to_pandas()  # 3 minutes timeout
 
-    # Dynamic PII Decrypt
-    df = decrypt_dataframe(df, session, table_name)
+        # Dynamic PII Decrypt
+        df = decrypt_dataframe(df, session, table_name)
 
-    st.dataframe(df)
+        st.dataframe(df)
 
-    csv = df.to_csv(index=False).encode("utf-8")
+        csv = df.to_csv(index=False).encode("utf-8")
 
-    st.download_button("Download CSV", csv, file_name=f"{report_name}.csv")
+        st.download_button("Download CSV", csv, file_name=f"{report_name}.csv")
+
+    except SnowparkSQLException:
+        st.error("⚠️ Query execution took too long (>3 minutes) and was cancelled. Please refine your filters.")
