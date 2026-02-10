@@ -211,14 +211,16 @@ if "query_future" not in st.session_state:
 if "query_running" not in st.session_state:
     st.session_state.query_running = False
 
-col_run, col_cancel = st.columns([1, 1])
+col_run, col_cancel = st.columns([0.5, 0.5])
 with col_run:
-    run_clicked = st.button("Run Query")
+    run_clicked = st.button("Run Query", use_container_width=True)
 
 with col_cancel:
     cancel_clicked = st.button(
         "Cancel Query",
-        disabled=not st.session_state.query_running  # Enabled only if query is running
+        disabled=not st.session_state.query_running,  # Enabled only if query is running
+        use_container_width=True
+
     )
 
 # -----------------------------
