@@ -2,7 +2,6 @@ import streamlit as st
 from utils.snowflake_session import get_snowflake_session
 from utils.decrypt_utils import decrypt_dataframe
 import concurrent.futures
-import time
 
 # -----------------------------
 # Custom CSS
@@ -201,12 +200,41 @@ if st.button("➕ Add Filter"):
     st.rerun()
 
 # -----------------------------
-# Run Query
+# Run / Cancel Query
 # -----------------------------
 st.divider()
 st.text("")
 
-if st.button("Run Query"):
+# ----------- Initialize query tracking -----------
+if "query_future" not in st.session_state:
+    st.session_state.query_future = None
+if "query_running" not in st.session_state:
+    st.session_state.query_running = False
+
+col_run, col_cancel = st.columns([1, 1])
+with col_run:
+    run_clicked = st.button("Run Query")
+
+with col_cancel:
+    cancel_clicked = st.button(
+        "Cancel Query",
+        disabled=not st.session_state.query_running  # Enabled only if query is running
+    )
+
+# -----------------------------
+# Handle Cancel Query
+# -----------------------------
+if cancel_clicked and st.session_state.query_future:
+    st.session_state.query_future.cancel()  # attempts to cancel the thread
+    st.session_state.query_running = False
+    st.session_state.query_future = None
+    st.warning("❌ Query was cancelled by user.")
+    st.stop()
+
+# -----------------------------
+# Handle Run Query
+# -----------------------------
+if run_clicked:
     if validation_error:
         st.error("⚠️ Please provide value for all required filters.")
         st.stop()
@@ -216,23 +244,36 @@ if st.button("Run Query"):
     if where_clause:
         query += f" WHERE {where_clause}"
 
-    try:
-        with st.spinner("Running query... ⏳"):
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(lambda: session.sql(query).to_pandas())
-                df = future.result(timeout=180)  # 3 minutes timeout
+    st.session_state.query_running = True
 
-        # Dynamic PII Decrypt
-        df = decrypt_dataframe(df, session, table_name)
+    def execute_query(q):
+        return session.sql(q).to_pandas()
 
-        st.dataframe(df)
+    with st.spinner("Running query... ⏳"):
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(execute_query, query)
+            st.session_state.query_future = future
+            try:
+                # ------------------ Recent Change ------------------
+                # 3 minutes timeout enforced
+                df = future.result(timeout=180)
+                # ---------------------------------------------------
+                st.session_state.query_running = False
+                st.session_state.query_future = None
 
-        csv = df.to_csv(index=False).encode("utf-8")
+                # Dynamic PII Decrypt
+                df = decrypt_dataframe(df, session, table_name)
+                st.dataframe(df)
 
-        st.download_button("Download CSV", csv, file_name=f"{report_name}.csv")
+                csv = df.to_csv(index=False).encode("utf-8")
+                st.download_button("Download CSV", csv, file_name=f"{report_name}.csv")
 
-    except concurrent.futures.TimeoutError:
-        st.error("⚠️ Query execution took too long (>3 minutes) and was cancelled. Please refine your filters.")
+            except concurrent.futures.TimeoutError:
+                st.session_state.query_running = False
+                st.session_state.query_future = None
+                st.error("⚠️ Query execution took too long (>3 minutes) and was cancelled. Please refine your filters.")
 
-    except Exception as e:
-        st.error(f"⚠️ An error occurred while running the query: {e}")
+            except Exception as e:
+                st.session_state.query_running = False
+                st.session_state.query_future = None
+                st.error(f"⚠️ An error occurred while running the query: {e}")
