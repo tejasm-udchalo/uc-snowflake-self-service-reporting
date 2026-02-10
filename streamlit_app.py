@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from utils.snowflake_session import get_snowflake_session
+from utils.decrypt_utils import decrypt_dataframe
 
 # -----------------------------
 # Custom CSS
@@ -201,7 +202,12 @@ if st.button("Run Query"):
         query += f" WHERE {where_clause}"
 
     df = session.sql(query).to_pandas()
-    st.dataframe(df, use_container_width=True)
+
+    # Dynamic PII Decrypt
+    df = decrypt_dataframe(df, session, table_name)
+
+    st.dataframe(df)
 
     csv = df.to_csv(index=False).encode("utf-8")
+
     st.download_button("Download CSV", csv, file_name=f"{report_name}.csv")
