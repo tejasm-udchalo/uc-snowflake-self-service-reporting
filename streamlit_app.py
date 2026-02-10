@@ -1,7 +1,8 @@
 import streamlit as st
-import pandas as pd
 from utils.snowflake_session import get_snowflake_session
 from utils.decrypt_utils import decrypt_dataframe
+import concurrent.futures
+import time
 
 # -----------------------------
 # Custom CSS
@@ -217,7 +218,9 @@ if st.button("Run Query"):
 
     try:
         with st.spinner("Running query... ⏳"):
-            df = session.sql(query, timeout=180).to_pandas()  # 3 minutes timeout
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(lambda: session.sql(query).to_pandas())
+                df = future.result(timeout=180)  # 3 minutes timeout
 
         # Dynamic PII Decrypt
         df = decrypt_dataframe(df, session, table_name)
@@ -228,5 +231,8 @@ if st.button("Run Query"):
 
         st.download_button("Download CSV", csv, file_name=f"{report_name}.csv")
 
-    except SnowparkSQLException:
+    except concurrent.futures.TimeoutError:
         st.error("⚠️ Query execution took too long (>3 minutes) and was cancelled. Please refine your filters.")
+
+    except Exception as e:
+        st.error(f"⚠️ An error occurred while running the query: {e}")
