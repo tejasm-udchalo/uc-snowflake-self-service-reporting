@@ -86,6 +86,25 @@ def decrypt_tokenized(data, version):
 
     except Exception:
         return data
+    
+def decrypt_split_full(data, version):
+    """
+    Decrypt every token separately
+    """
+    try:
+        if data is None or data == "":
+            return data
+
+        parts = str(data).split()
+
+        decrypted_parts = [
+            decrypt(part, version) for part in parts
+        ]
+
+        return " ".join(decrypted_parts)
+
+    except Exception:
+        return data
 
 # ---------------------------------------------------
 # Fetch PII Mapping From Snowflake
@@ -148,17 +167,25 @@ def decrypt_dataframe(df, session, table_name):
         version = config["version"]
         dtype = config["type"]
 
-        # -------- CHANGE: TOKENIZED SUPPORT --------
-        if dtype == "TOKENIZED":
+        # FULL decrypt
+        if dtype == "FULL":
+
+            df[column] = df[column].map(
+                lambda x: decrypt(x, version)
+            )
+
+        # TOKENIZED decrypt
+        elif dtype == "TOKENIZED":
 
             df[column] = df[column].map(
                 lambda x: decrypt_tokenized(x, version)
             )
 
-        else:
+        # SPLIT FULL decrypt
+        elif dtype == "SPLIT_FULL":
 
             df[column] = df[column].map(
-                lambda x: decrypt(x, version)
+                lambda x: decrypt_split_full(x, version)
             )
 
     return df
