@@ -154,29 +154,43 @@ for i in range(len(st.session_state.filters)):
     # -----------------------------
     # Build SQL per filter
     # -----------------------------
-    if column and operator:
-        condition_sql = ""
+if column and operator:
+    condition_sql = ""
 
-        if operator in ["IS NULL", "IS NOT NULL"]:
-            condition_sql = f"{column} {operator}"
-        elif operator == "IN":
-            if value.strip() == "":
-                validation_error = True
-            else:
-                values = [v.strip() for v in value.split(",") if v.strip()]
-                in_clause = ", ".join([f"'{v}'" for v in values])
-                condition_sql = f"{column} IN ({in_clause})"
+    if operator in ["IS NULL", "IS NOT NULL"]:
+        condition_sql = f"{column} {operator}"
+
+    elif operator == "IN":
+        if value.strip() == "":
+            validation_error = True
         else:
-            if value.strip() == "":
-                validation_error = True
-            else:
-                condition_sql = f"{column} {operator} '{value}'"
+            values = [v.strip() for v in value.split(",") if v.strip()]
+            in_clause = ", ".join([f"'{v}'" for v in values])
+            condition_sql = f"{column} IN ({in_clause})"
 
-        if condition_sql:
-            if i == 0:
-                filters_sql.append(condition_sql)
-            else:
-                filters_sql.append(f"{logic} {condition_sql}")
+    elif operator == "LIKE":
+        if value.strip() == "":
+            validation_error = True
+        else:
+            like_value = value.strip()
+
+            # ✅ Add % automatically if user did not provide
+            if "%" not in like_value:
+                like_value = f"%{like_value}%"
+
+            condition_sql = f"{column} LIKE '{like_value}'"
+
+    else:
+        if value.strip() == "":
+            validation_error = True
+        else:
+            condition_sql = f"{column} {operator} '{value}'"
+
+    if condition_sql:
+        if i == 0:
+            filters_sql.append(condition_sql)
+        else:
+            filters_sql.append(f"{logic} {condition_sql}")
 
 # -----------------------------
 # Add Filter Button
