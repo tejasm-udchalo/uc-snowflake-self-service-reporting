@@ -58,8 +58,8 @@ def decrypt(data, version):
 # ---------------------------------------------------
 # Fetch PII Mapping From Snowflake
 # ---------------------------------------------------
-@st.cache_data
-def get_pii_mapping(session, table_name):
+@st.cache_data(ttl=3600)
+def get_pii_mapping(_session, table_name):
 
     query = f"""
         SELECT COLUMN_NAME, DECRYPTION_VERSION
@@ -67,7 +67,7 @@ def get_pii_mapping(session, table_name):
         WHERE TABLE_NAME = '{table_name.upper()}'
     """
 
-    df = session.sql(query).to_pandas()
+    df = _session.sql(query).to_pandas()
 
     return dict(zip(df["COLUMN_NAME"], df["DECRYPTION_VERSION"]))
 
@@ -77,6 +77,7 @@ def get_pii_mapping(session, table_name):
 # ---------------------------------------------------
 def decrypt_dataframe(df, session, table_name):
 
+    # No change needed here — Streamlit ignores caching based on _session
     pii_map = get_pii_mapping(session, table_name)
 
     for column, version in pii_map.items():
