@@ -35,8 +35,11 @@ def _auth_login_with_compat():
     try:
         return authenticator.login(location="main")
     except Exception as e:
-        st.error(f"Authentication initialization failed: {e}")
+        # Return explicit tuple so caller can safely unpack
         return None, None, None
+
+    # If none of the calls succeeded, return explicit None-tuple
+    return None, None, None
 
 
 name, authentication_status, username = _auth_login_with_compat()
