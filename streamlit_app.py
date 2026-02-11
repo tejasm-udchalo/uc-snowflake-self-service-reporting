@@ -3,38 +3,47 @@ from utils.snowflake_session import get_snowflake_session
 from utils.decrypt_utils import decrypt_dataframe
 import concurrent.futures
 import streamlit_authenticator as stauth
+import yaml
+from yaml.loader import SafeLoader
 
 # Set page config for faster initial load
 st.set_page_config(page_title="Snowflake Reporting", layout="wide")
 
+# Load the config
+with open('./credentials.yml') as file:
+    config = yaml.load(file, Loader=SafeLoader)
+
+stauth.Hasher.hash_passwords(config['credentials'])
+
+# Save hashed credentials back
+with open('./credentials.yml', 'w') as file:
+    yaml.dump(config, file, default_flow_style=False)
+
 authenticator = stauth.Authenticate(
-    dict(st.secrets["credentials"]),
-    st.secrets["cookie"]["name"],
-    st.secrets["cookie"]["key"],
-    st.secrets["cookie"]["expiry_days"]
+    config['credentials'],
+    config['cookie']['name'],
+    config['cookie']['key'],
+    config['cookie']['expiry_days']
 )
 
-login_result = authenticator.login("Login", "main")
+try:
+    auth = authenticator.login('main')
+except Exception as e:
+    st.error(e)
 
-if login_result:
-    name = login_result.get("name")
-    authentication_status = login_result.get("authentication_status")
-    username = login_result.get("username")
-else:
-    authentication_status = None
-
-if authentication_status is False:
-    st.error("❌ Username/password is incorrect")
+# All the authentication info is stored in the session_state
+if st.session_state["authentication_status"]:
+    # User is connected
+    authenticator.logout('Logout', 'main')
+elif st.session_state["authentication_status"] == False:
+    st.error('Username/password is incorrect')
+    # Stop the rendering if the user isn't connected
+    st.stop()
+elif st.session_state["authentication_status"] == None:
+    st.warning('Please enter your username and password')
+    # Stop the rendering if the user isn't connected
     st.stop()
 
-if authentication_status is None:
-    st.warning("⚠️ Please enter your username and password")
-    st.stop()
-
-# ---------------- SIDEBAR LOGOUT ---------------- #
-
-st.sidebar.write(f"Welcome {name}")
-authenticator.logout("Logout", "sidebar")
 
 # ===== PERFORMANCE OPTIMIZATION 1: Cache Snowflake Session =====
 # This prevents reconnecting to Snowflake on every rerun
