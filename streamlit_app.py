@@ -51,9 +51,6 @@ with st.sidebar.expander("🔑 Forgot Password"):
     except Exception as e:
         st.error(e)
 
-# -------- REGISTER USER -------- #
-
-with st.sidebar.expander("👤 Register New User"):
 
     try:
         email, username, name = authenticator.register_user()
