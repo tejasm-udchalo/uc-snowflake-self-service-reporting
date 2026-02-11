@@ -3,23 +3,15 @@ from utils.snowflake_session import get_snowflake_session
 from utils.decrypt_utils import decrypt_dataframe
 import concurrent.futures
 import streamlit_authenticator as stauth
-import inspect
-
-# Validate required secrets exist and provide a helpful error if not
-missing_secrets = []
-for key in ("users", "auth"):
-    if key not in st.secrets:
-        missing_secrets.append(key)
-
-if missing_secrets:
-    st.error(
-        "Missing required secrets: " + ", ".join(missing_secrets) +
-        ".\nPlease add them to .streamlit/secrets.toml or via Streamlit Cloud app secrets."
-    )
-    st.stop()
 
 users = st.secrets["users"]
-credentials = {"usernames": {u: {"name": u, "password": p} for u, p in users.items()}}
+
+credentials = {
+    "usernames": {
+        u: {"name": u, "password": p}
+        for u, p in users.items()
+    }
+}
 
 authenticator = stauth.Authenticate(
     credentials=credentials,
@@ -28,31 +20,7 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=1
 )
 
-def _auth_login_with_compat():
-    """Try different authenticator.login signatures for compatibility.
-
-    Returns (name, authentication_status, username)
-    """
-    # Inspect the signature and call once with the appropriate parameters
-    try:
-        sig = inspect.signature(authenticator.login)
-        params = sig.parameters
-
-        if "name" in params and "location" in params:
-            return authenticator.login(name="Login", location="main")
-        if "name" in params and "location" not in params:
-            return authenticator.login(name="Login")
-        if "location" in params and "name" not in params:
-            return authenticator.login(location="main")
-
-        # Fallback to positional call
-        return authenticator.login("Login", "main")
-    except Exception:
-        # Ensure a 3-tuple is always returned
-        return None, None, None
-
-
-name, authentication_status, username = _auth_login_with_compat()
+name, authentication_status, username = authenticator.login(location="main")
 
 if authentication_status is False:
     st.error("❌ Username/password is incorrect")
@@ -62,28 +30,7 @@ if authentication_status is None:
     st.warning("⚠️ Please enter your username and password")
     st.stop()
 
-
-def _auth_logout_with_compat():
-    """Call logout using whichever signature the installed version supports."""
-    # Prefer keyword args first
-    try:
-        return authenticator.logout(name="Logout", location="sidebar")
-    except Exception:
-        pass
-    # Fallback positional
-    try:
-        return authenticator.logout("Logout", "sidebar")
-    except Exception:
-        pass
-    try:
-        return authenticator.logout("Logout", location="sidebar")
-    except Exception:
-        # Best-effort: if logout fails silently, ignore
-        return None
-
-
-# Show logout button in sidebar
-_auth_logout_with_compat()
+authenticator.logout(location="sidebar")
 
 
 # Set page config for faster initial load
