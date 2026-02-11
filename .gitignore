@@ -1,2 +1,6 @@
 config/keys/
-*.p8
+*.p8.streamlit/secrets.toml
+.streamlit/secrets.local.toml
+__pycache__/
+*.pyc
+.DS_Store
