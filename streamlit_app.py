@@ -3,21 +3,62 @@ from utils.snowflake_session import get_snowflake_session
 from utils.decrypt_utils import decrypt_dataframe
 import concurrent.futures
 import streamlit_authenticator as stauth
-import yaml
-from yaml.loader import SafeLoader
 
-# Set page config for faster initial load
+print("🚀 Streamlit app starting...")
+
+# ---------------- PAGE CONFIG ---------------- #
 st.set_page_config(page_title="Snowflake Reporting", layout="wide")
+print("✅ Page config set")
 
-# Load the config
-with open('./credentials.yml') as file:
-    config = yaml.load(file, Loader=SafeLoader)
+# ---------------- LOAD CONFIG FROM SECRETS ---------------- #
 
-stauth.Hasher.hash_passwords(config['credentials'])
+def load_config_from_secrets():
+    print("🔐 Loading configuration from Streamlit secrets...")
 
-# Save hashed credentials back
-with open('./credentials.yml', 'w') as file:
-    yaml.dump(config, file, default_flow_style=False)
+    credentials = {"usernames": {}}
+
+    try:
+        users = st.secrets["credentials"]["usernames"]
+        print(f"✅ Found {len(users)} users in secrets")
+
+        for username, user_data in users.items():
+            print(f"➡️ Loading user: {username}")
+
+            credentials["usernames"][username] = {
+                "email": user_data["email"],
+                "first_name": user_data["first_name"],
+                "last_name": user_data["last_name"],
+                "password": user_data["password"],
+                "roles": list(user_data["roles"]),
+                "failed_login_attempts": 0,
+                "logged_in": False
+            }
+
+        config = {
+            "credentials": credentials,
+            "cookie": {
+                "name": st.secrets["cookie"]["name"],
+                "key": st.secrets["cookie"]["key"],
+                "expiry_days": st.secrets["cookie"]["expiry_days"]
+            }
+        }
+
+        print("✅ Configuration built successfully")
+        return config
+
+    except Exception as e:
+        print("❌ Error while loading secrets:", str(e))
+        raise
+
+
+# Load config only once into session
+if "auth_config" not in st.session_state:
+    print("📦 Loading auth config into session state")
+    st.session_state.auth_config = load_config_from_secrets()
+else:
+    print("♻️ Using cached auth config from session state")
+
+config = st.session_state.auth_config
 
 authenticator = stauth.Authenticate(
     config['credentials'],
@@ -42,8 +83,7 @@ with st.sidebar.expander("🔑 Forgot Password"):
             st.info(f"Temporary Password: {new_password}")
 
             # Save updated config
-            with open('./credentials.yml', 'w') as file:
-                yaml.dump(config, file)
+            st.session_state.auth_config = config
 
         elif username is False:
             st.error("Username not found")
