@@ -5,6 +5,19 @@ import concurrent.futures
 import streamlit_authenticator as stauth
 import inspect
 
+# Validate required secrets exist and provide a helpful error if not
+missing_secrets = []
+for key in ("users", "auth"):
+    if key not in st.secrets:
+        missing_secrets.append(key)
+
+if missing_secrets:
+    st.error(
+        "Missing required secrets: " + ", ".join(missing_secrets) +
+        ".\nPlease add them to .streamlit/secrets.toml or via Streamlit Cloud app secrets."
+    )
+    st.stop()
+
 users = st.secrets["users"]
 credentials = {"usernames": {u: {"name": u, "password": p} for u, p in users.items()}}
 
