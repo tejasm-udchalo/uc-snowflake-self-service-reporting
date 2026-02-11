@@ -79,6 +79,7 @@ with st.sidebar.expander("🔑 Forgot Password"):
 # All the authentication info is stored in the session_state
 if st.session_state["authentication_status"]:
     # User is connected
+    st.session_state["username"] = st.session_state.get("name")
     authenticator.logout('Logout', 'main')
 elif st.session_state["authentication_status"] == False:
     st.error('Username/password is incorrect')
