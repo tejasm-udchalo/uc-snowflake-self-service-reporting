@@ -212,6 +212,8 @@ if "query_future" not in st.session_state:
     st.session_state.query_future = None
 if "query_running" not in st.session_state:
     st.session_state.query_running = False
+if "query_sql" not in st.session_state:
+    st.session_state.query_sql = None
 
 col_run, col_cancel = st.columns([0.5, 0.5])
 with col_run:
@@ -243,8 +245,14 @@ if run_clicked:
     if where_clause:
         query += f" WHERE {where_clause}"
 
+    st.session_state.query_sql = query
     st.session_state.query_running = True
+    st.rerun()  # Rerun to update UI and show enabled cancel button
 
+# Execute query if running
+if st.session_state.query_running and st.session_state.query_future is None:
+    query = st.session_state.query_sql
+    
     def execute_query(q):
         return session.sql(q).to_pandas()
 
