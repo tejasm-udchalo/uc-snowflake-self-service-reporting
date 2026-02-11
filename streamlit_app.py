@@ -11,8 +11,7 @@ authenticator = stauth.Authenticate(
     dict(st.secrets["credentials"]),
     st.secrets["cookie"]["name"],
     st.secrets["cookie"]["key"],
-    st.secrets["cookie"]["expiry_days"],
-    dict(st.secrets["preauthorized"])
+    st.secrets["cookie"]["expiry_days"]
 )
 
 login_result = authenticator.login("Login", "main")
