@@ -13,7 +13,7 @@ def log_audit(session, username, report_name, query, query_time,
 
     try:
         ist = pytz.timezone("Asia/Kolkata")
-        queried_at = datetime.now(ist)
+        queried_at_ist = datetime.now(ist)
 
         # Escape single quotes in query
         query_safe = query.replace("'", "''") if query else "UNKNOWN"
@@ -23,7 +23,7 @@ def log_audit(session, username, report_name, query, query_time,
         (
             USERNAME,
             REPORT_NAME,
-            QUERIED_AT,
+            QUERIED_AT_IST,
             QUERY_TIME_SEC,
             IS_RESULT_FETCHED,
             IS_QUERY_CANCELED,
@@ -34,7 +34,7 @@ def log_audit(session, username, report_name, query, query_time,
         (
             '{username}',
             '{report_name}',
-            '{queried_at}',
+            '{queried_at_ist}',
             {query_time},
             {str(is_result_fetched).upper()},
             {str(is_query_canceled).upper()},
@@ -54,7 +54,7 @@ def log_audit(session, username, report_name, query, query_time,
         return False, msg
 
 
-def finalize_audit(session, session_state, success=False, canceled=False, df=None, show_ui=False):
+def finalize_audit(session, session_state, success=False, canceled=False, df=None):
     """
     Ensures audit is written exactly once.
     
@@ -64,17 +64,13 @@ def finalize_audit(session, session_state, success=False, canceled=False, df=Non
         success: Whether query succeeded
         canceled: Whether query was canceled
         df: Query result dataframe (optional)
-        show_ui: Whether to display status messages in Streamlit UI (for debugging)
     
     Returns:
         (success: bool, message: str)
     """
 
     if not session_state.get("audit_active"):
-        msg = "⚠️ Audit not active. Skipping."
-        if show_ui:
-            st.info(msg)
-        return False, msg
+        return False, "Audit not active"
 
     try:
         end_time = time.time()
@@ -85,7 +81,7 @@ def finalize_audit(session, session_state, success=False, canceled=False, df=Non
         if df is not None:
             try:
                 output_size = int(df.memory_usage(deep=True).sum())
-            except Exception as e:
+            except Exception:
                 output_size = 0
 
         # Log to Snowflake
@@ -102,22 +98,9 @@ def finalize_audit(session, session_state, success=False, canceled=False, df=Non
 
         # Mark audit as completed to prevent duplicate logging
         session_state["audit_active"] = False
-
-        if show_ui:
-            if insert_success:
-                st.success(insert_msg)
-            else:
-                st.error(insert_msg)
-
         return insert_success, insert_msg
 
     except Exception as e:
-        msg = f"❌ finalize_audit failed: {str(e)}"
-        if show_ui:
-            st.error(msg)
-        return False, msg
-
-    finally:
-        session_state.audit_active = False
-        print("Audit flag reset to False.\n")
+        session_state["audit_active"] = False
+        return False, str(e)
 

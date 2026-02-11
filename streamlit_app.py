@@ -327,9 +327,10 @@ if cancel_clicked and st.session_state.query_future:
     st.session_state.query_future = None
 
     try:
-        finalize_audit(session, st.session_state, canceled=True, show_ui=True)
-    except Exception as e:
-        st.error(f"⚠️ Audit logging error: {e}")
+    try:
+        finalize_audit(session, st.session_state, canceled=True)
+    except Exception:
+        pass
 
     st.warning("❌ Query was cancelled by user.")
     st.stop()
@@ -385,21 +386,22 @@ if st.session_state.query_running and st.session_state.query_future is None:
                 csv = df.to_csv(index=False).encode("utf-8")
                 st.download_button("Download CSV", csv, file_name=f"{report_name}.csv")
 
-                # Log audit with visible feedback
+                # Log audit
                 try:
-                    finalize_audit(session, st.session_state, success=True, df=df, show_ui=True)
-                except Exception as e:
-                    st.error(f"⚠️ Audit logging error: {e}")
+                    finalize_audit(session, st.session_state, success=True, df=df)
+                except Exception:
+                    pass
 
             except concurrent.futures.TimeoutError:
                 st.session_state.query_running = False
                 st.session_state.query_future = None
 
                 # Log audit with visible feedback
+                # Log audit
                 try:
-                    finalize_audit(session, st.session_state, canceled=True, show_ui=True)
-                except Exception as e:
-                    st.error(f"⚠️ Audit logging error: {e}")
+                    finalize_audit(session, st.session_state, canceled=True)
+                except Exception:
+                    pass
 
                 st.error("⚠️ Query execution took too long (>3 minutes) and was cancelled. Please refine your filters.")
 
@@ -407,8 +409,8 @@ if st.session_state.query_running and st.session_state.query_future is None:
                 st.session_state.query_running = False
                 st.session_state.query_future = None
 
-                # Log audit with visible feedback
+                # Log audit
                 try:
-                    finalize_audit(session, st.session_state, success=False, show_ui=True)
-                except Exception as audit_err:
-                    st.error(f"⚠️ Audit logging error: {audit_err}")
+                    finalize_audit(session, st.session_state, success=False)
+                except Exception:
+                    pass
