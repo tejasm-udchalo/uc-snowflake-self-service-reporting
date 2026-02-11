@@ -14,7 +14,32 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=1
 )
 
-name, authentication_status, username = authenticator.login("Login", location="main")
+def _auth_login_with_compat():
+    """Try different authenticator.login signatures for compatibility.
+
+    Returns (name, authentication_status, username)
+    """
+    # Prefer calling with explicit keyword args to avoid signature ambiguity
+    try:
+        return authenticator.login(name="Login", location="main")
+    except Exception:
+        pass
+
+    # Fallback: positional form
+    try:
+        return authenticator.login("Login", "main")
+    except Exception:
+        pass
+
+    # Try named-only form (some versions accept only location)
+    try:
+        return authenticator.login(location="main")
+    except Exception as e:
+        st.error(f"Authentication initialization failed: {e}")
+        return None, None, None
+
+
+name, authentication_status, username = _auth_login_with_compat()
 
 if authentication_status is False:
     st.error("❌ Username/password is incorrect")
@@ -24,8 +49,28 @@ if authentication_status is None:
     st.warning("⚠️ Please enter your username and password")
     st.stop()
 
+
+def _auth_logout_with_compat():
+    """Call logout using whichever signature the installed version supports."""
+    # Prefer keyword args first
+    try:
+        return authenticator.logout(name="Logout", location="sidebar")
+    except Exception:
+        pass
+    # Fallback positional
+    try:
+        return authenticator.logout("Logout", "sidebar")
+    except Exception:
+        pass
+    try:
+        return authenticator.logout("Logout", location="sidebar")
+    except Exception:
+        # Best-effort: if logout fails silently, ignore
+        return None
+
+
 # Show logout button in sidebar
-authenticator.logout("Logout", location="sidebar")
+_auth_logout_with_compat()
 
 
 # Set page config for faster initial load
