@@ -57,7 +57,7 @@ def log_audit(session, username, report_name, query, query_time,
 
         print("=== AUDIT LOGGING SUCCESS ===\n")
 
-    except Exception:
+    except Exception as e:
         print("⚠️ Audit logging failed:", e)
         pass
 
@@ -81,7 +81,7 @@ def finalize_audit(session, session_state, success=False, canceled=False, df=Non
         if df is not None:
             try:
                 output_size = int(df.memory_usage(deep=True).sum())
-            except:
+            except Exception as e:
                 print("⚠️ Failed to calculate output size:", e)
                 output_size = 0
 
