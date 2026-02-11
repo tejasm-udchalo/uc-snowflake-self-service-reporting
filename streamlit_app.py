@@ -4,26 +4,16 @@ from utils.decrypt_utils import decrypt_dataframe
 import concurrent.futures
 import streamlit_authenticator as stauth
 
-print("🚀 Streamlit app starting...")
-
 # ---------------- PAGE CONFIG ---------------- #
 st.set_page_config(page_title="Snowflake Reporting", layout="wide")
-print("✅ Page config set")
 
 # ---------------- LOAD CONFIG FROM SECRETS ---------------- #
 
 def load_config_from_secrets():
-    print("🔐 Loading configuration from Streamlit secrets...")
-
     credentials = {"usernames": {}}
-
     try:
         users = st.secrets["credentials"]["usernames"]
-        print(f"✅ Found {len(users)} users in secrets")
-
         for username, user_data in users.items():
-            print(f"➡️ Loading user: {username}")
-
             credentials["usernames"][username] = {
                 "email": user_data["email"],
                 "first_name": user_data["first_name"],
@@ -43,20 +33,15 @@ def load_config_from_secrets():
             }
         }
 
-        print("✅ Configuration built successfully")
         return config
 
     except Exception as e:
-        print("❌ Error while loading secrets:", str(e))
         raise
 
 
 # Load config only once into session
 if "auth_config" not in st.session_state:
-    print("📦 Loading auth config into session state")
     st.session_state.auth_config = load_config_from_secrets()
-else:
-    print("♻️ Using cached auth config from session state")
 
 config = st.session_state.auth_config
 
