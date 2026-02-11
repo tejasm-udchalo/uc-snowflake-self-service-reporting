@@ -4,35 +4,6 @@ from utils.decrypt_utils import decrypt_dataframe
 import concurrent.futures
 import streamlit_authenticator as stauth
 
-users = st.secrets["users"]
-
-credentials = {
-    "usernames": {
-        u: {"name": u, "password": p}
-        for u, p in users.items()
-    }
-}
-
-authenticator = stauth.Authenticate(
-    credentials=credentials,
-    cookie_name="udchalo_reports",
-    key=st.secrets["auth"]["cookie_key"],
-    cookie_expiry_days=1
-)
-
-name, authentication_status, username = authenticator.login(location="main")
-
-if authentication_status is False:
-    st.error("❌ Username/password is incorrect")
-    st.stop()
-
-if authentication_status is None:
-    st.warning("⚠️ Please enter your username and password")
-    st.stop()
-
-authenticator.logout(location="sidebar")
-
-
 # Set page config for faster initial load
 st.set_page_config(page_title="Snowflake Reporting", layout="wide")
 
