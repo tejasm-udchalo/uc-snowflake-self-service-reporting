@@ -51,20 +51,6 @@ with st.sidebar.expander("🔑 Forgot Password"):
     except Exception as e:
         st.error(e)
 
-
-    try:
-        email, username, name = authenticator.register_user()
-
-        if email:
-            st.success("User registered successfully")
-
-            # Save updated config
-            with open('./credentials.yml', 'w') as file:
-                yaml.dump(config, file)
-
-    except Exception as e:
-        st.error(e)
-
 # All the authentication info is stored in the session_state
 if st.session_state["authentication_status"]:
     # User is connected
