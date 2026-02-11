@@ -14,7 +14,7 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=1
 )
 
-name, authentication_status, username = authenticator.login("Login", "main")
+name, authentication_status, username = authenticator.login("Login", location="main")
 
 if authentication_status is False:
     st.error("❌ Username/password is incorrect")
@@ -25,7 +25,7 @@ if authentication_status is None:
     st.stop()
 
 # Show logout button in sidebar
-authenticator.logout("Logout", "sidebar")
+authenticator.logout("Logout", location="sidebar")
 
 
 # Set page config for faster initial load
