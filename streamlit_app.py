@@ -1,8 +1,10 @@
 import streamlit as st
 from utils.snowflake_session import get_snowflake_session
 from utils.decrypt_utils import decrypt_dataframe
+from utils.audit_logger_utils import finalize_audit
 import concurrent.futures
 import streamlit_authenticator as stauth
+import time
 
 # ---------------- PAGE CONFIG ---------------- #
 st.set_page_config(page_title="Snowflake Reporting", layout="wide")
@@ -66,10 +68,8 @@ with st.sidebar.expander("🔑 Forgot Password"):
         if username:
             st.success("New password generated. Share securely with user.")
             st.info(f"Temporary Password: {new_password}")
-
             # Save updated config
             st.session_state.auth_config = config
-
         elif username is False:
             st.error("Username not found")
 
@@ -290,6 +290,9 @@ if st.button("➕ Add Filter"):
 st.divider()
 st.text("")
 
+if "audit_active" not in st.session_state:
+    st.session_state.audit_active = False
+
 # Initialize query tracking
 if "query_future" not in st.session_state:
     st.session_state.query_future = None
@@ -314,6 +317,7 @@ if cancel_clicked and st.session_state.query_future:
     st.session_state.query_future.cancel()
     st.session_state.query_running = False
     st.session_state.query_future = None
+    finalize_audit(session, st.session_state, canceled=True)
     st.warning("❌ Query was cancelled by user.")
     st.stop()
 
@@ -330,6 +334,10 @@ if run_clicked:
 
     st.session_state.query_sql = query
     st.session_state.query_running = True
+    st.session_state.audit_active = True
+    st.session_state.audit_start_time = time.time()
+    st.session_state.audit_query_sql = query
+    st.session_state.audit_report_name = report_name
     st.rerun()  # Rerun to update UI and show enabled cancel button
 
 # Execute query if running
@@ -356,12 +364,16 @@ if st.session_state.query_running and st.session_state.query_future is None:
                 csv = df.to_csv(index=False).encode("utf-8")
                 st.download_button("Download CSV", csv, file_name=f"{report_name}.csv")
 
+                finalize_audit(session, st.session_state, success=True, df=df)
+
             except concurrent.futures.TimeoutError:
                 st.session_state.query_running = False
                 st.session_state.query_future = None
+                finalize_audit(session, st.session_state, canceled=True)
                 st.error("⚠️ Query execution took too long (>3 minutes) and was cancelled. Please refine your filters.")
 
             except Exception as e:
                 st.session_state.query_running = False
                 st.session_state.query_future = None
+                finalize_audit(session, st.session_state, success=False)
                 st.error(f"⚠️ An error occurred while running the query: {e}")
