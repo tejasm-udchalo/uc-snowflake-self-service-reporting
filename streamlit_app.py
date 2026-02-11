@@ -327,7 +327,6 @@ if cancel_clicked and st.session_state.query_future:
     st.session_state.query_future = None
 
     try:
-    try:
         finalize_audit(session, st.session_state, canceled=True)
     except Exception:
         pass
@@ -352,14 +351,6 @@ if run_clicked:
     st.session_state.audit_start_time = time.time()
     st.session_state.audit_query_sql = query
     st.session_state.audit_report_name = report_name
-
-    # --- AUDIT DEBUG LOGGING ---
-    print("DEBUG: Run clicked, initializing audit")
-    print("DEBUG: Audit active:", st.session_state.get("audit_active"))
-    print("DEBUG: Audit start time:", st.session_state.get("audit_start_time"))
-    print("DEBUG: Audit query SQL:", st.session_state.get("audit_query_sql"))
-    print("DEBUG: Audit report name:", st.session_state.get("audit_report_name"))
-
     st.rerun()  # Rerun to update UI and show enabled cancel button
 
 # Execute query if running
@@ -396,7 +387,6 @@ if st.session_state.query_running and st.session_state.query_future is None:
                 st.session_state.query_running = False
                 st.session_state.query_future = None
 
-                # Log audit with visible feedback
                 # Log audit
                 try:
                     finalize_audit(session, st.session_state, canceled=True)
