@@ -3,6 +3,7 @@ from utils.snowflake_session import get_snowflake_session
 from utils.decrypt_utils import decrypt_dataframe
 import concurrent.futures
 import streamlit_authenticator as stauth
+import inspect
 
 users = st.secrets["users"]
 credentials = {"usernames": {u: {"name": u, "password": p} for u, p in users.items()}}
@@ -19,27 +20,23 @@ def _auth_login_with_compat():
 
     Returns (name, authentication_status, username)
     """
-    # Prefer calling with explicit keyword args to avoid signature ambiguity
+    # Inspect the signature and call once with the appropriate parameters
     try:
-        return authenticator.login(name="Login", location="main")
-    except Exception:
-        pass
+        sig = inspect.signature(authenticator.login)
+        params = sig.parameters
 
-    # Fallback: positional form
-    try:
+        if "name" in params and "location" in params:
+            return authenticator.login(name="Login", location="main")
+        if "name" in params and "location" not in params:
+            return authenticator.login(name="Login")
+        if "location" in params and "name" not in params:
+            return authenticator.login(location="main")
+
+        # Fallback to positional call
         return authenticator.login("Login", "main")
     except Exception:
-        pass
-
-    # Try named-only form (some versions accept only location)
-    try:
-        return authenticator.login(location="main")
-    except Exception as e:
-        # Return explicit tuple so caller can safely unpack
+        # Ensure a 3-tuple is always returned
         return None, None, None
-
-    # If none of the calls succeeded, return explicit None-tuple
-    return None, None, None
 
 
 name, authentication_status, username = _auth_login_with_compat()
