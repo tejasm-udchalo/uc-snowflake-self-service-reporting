@@ -7,6 +7,36 @@ import streamlit_authenticator as stauth
 # Set page config for faster initial load
 st.set_page_config(page_title="Snowflake Reporting", layout="wide")
 
+authenticator = stauth.Authenticate(
+    dict(st.secrets["credentials"]),
+    st.secrets["cookie"]["name"],
+    st.secrets["cookie"]["key"],
+    st.secrets["cookie"]["expiry_days"],
+    dict(st.secrets["preauthorized"])
+)
+
+login_result = authenticator.login("Login", "main")
+
+if login_result:
+    name = login_result.get("name")
+    authentication_status = login_result.get("authentication_status")
+    username = login_result.get("username")
+else:
+    authentication_status = None
+
+if authentication_status is False:
+    st.error("❌ Username/password is incorrect")
+    st.stop()
+
+if authentication_status is None:
+    st.warning("⚠️ Please enter your username and password")
+    st.stop()
+
+# ---------------- SIDEBAR LOGOUT ---------------- #
+
+st.sidebar.write(f"Welcome {name}")
+authenticator.logout("Logout", "sidebar")
+
 # ===== PERFORMANCE OPTIMIZATION 1: Cache Snowflake Session =====
 # This prevents reconnecting to Snowflake on every rerun
 # Using @st.cache_resource ensures the session persists across reruns
