@@ -294,6 +294,12 @@ st.text("")
 
 if "audit_active" not in st.session_state:
     st.session_state.audit_active = False
+if "audit_start_time" not in st.session_state:
+    st.session_state.audit_start_time = None
+if "audit_query_sql" not in st.session_state:
+    st.session_state.audit_query_sql = None
+if "audit_report_name" not in st.session_state:
+    st.session_state.audit_report_name = None
 
 # Initialize query tracking
 if "query_future" not in st.session_state:
@@ -320,19 +326,10 @@ if cancel_clicked and st.session_state.query_future:
     st.session_state.query_running = False
     st.session_state.query_future = None
 
-    # --- AUDIT DEBUG LOGGING ---
-    print("DEBUG: User canceled query")
-    print("DEBUG: Audit active before finalize:", st.session_state.get("audit_active"))
-    print("DEBUG: Audit start time:", st.session_state.get("audit_start_time"))
-    print("DEBUG: Audit query SQL:", st.session_state.get("audit_query_sql"))
-    print("DEBUG: Audit report name:", st.session_state.get("audit_report_name"))
-
     try:
-        finalize_audit(session, st.session_state, canceled=True)
-        print("DEBUG: finalize_audit completed successfully for cancel")
+        finalize_audit(session, st.session_state, canceled=True, show_ui=True)
     except Exception as e:
-        print("⚠️ Audit logging failed on cancel:", e)
-        traceback.print_exc()
+        st.error(f"⚠️ Audit logging error: {e}")
 
     st.warning("❌ Query was cancelled by user.")
     st.stop()
@@ -388,36 +385,21 @@ if st.session_state.query_running and st.session_state.query_future is None:
                 csv = df.to_csv(index=False).encode("utf-8")
                 st.download_button("Download CSV", csv, file_name=f"{report_name}.csv")
 
-                # --- AUDIT DEBUG LOGGING BEFORE FINALIZE ---
-                print("DEBUG: Query executed successfully")
-                print("DEBUG: Audit active before finalize:", st.session_state.get("audit_active"))
-                print("DEBUG: Username:", st.session_state.get("username"))
-                print("DEBUG: Report name:", st.session_state.get("audit_report_name"))
-                print("DEBUG: Query SQL:", st.session_state.get("audit_query_sql"))
-                print("DEBUG: Output size (rows):", len(df))
-
+                # Log audit with visible feedback
                 try:
-                    finalize_audit(session, st.session_state, success=True, df=df)
+                    finalize_audit(session, st.session_state, success=True, df=df, show_ui=True)
                 except Exception as e:
-                    print("⚠️ Audit logging failed on success:", e)
-                    traceback.print_exc()
+                    st.error(f"⚠️ Audit logging error: {e}")
 
             except concurrent.futures.TimeoutError:
                 st.session_state.query_running = False
                 st.session_state.query_future = None
 
-                # --- AUDIT DEBUG LOGGING BEFORE FINALIZE ---
-                print("DEBUG: Query timed out")
-                print("DEBUG: Audit active before finalize:", st.session_state.get("audit_active"))
-                print("DEBUG: Username:", st.session_state.get("username"))
-                print("DEBUG: Report name:", st.session_state.get("audit_report_name"))
-                print("DEBUG: Query SQL:", st.session_state.get("audit_query_sql"))
-
+                # Log audit with visible feedback
                 try:
-                    finalize_audit(session, st.session_state, canceled=True)
+                    finalize_audit(session, st.session_state, canceled=True, show_ui=True)
                 except Exception as e:
-                    print("⚠️ Audit logging failed on timeout:", e)
-                    traceback.print_exc()
+                    st.error(f"⚠️ Audit logging error: {e}")
 
                 st.error("⚠️ Query execution took too long (>3 minutes) and was cancelled. Please refine your filters.")
 
@@ -425,19 +407,8 @@ if st.session_state.query_running and st.session_state.query_future is None:
                 st.session_state.query_running = False
                 st.session_state.query_future = None
 
-                # --- AUDIT DEBUG LOGGING BEFORE FINALIZE ---
-                print("DEBUG: Query execution error:", e)
-                print("DEBUG: Audit active before finalize:", st.session_state.get("audit_active"))
-                print("DEBUG: Username:", st.session_state.get("username"))
-                print("DEBUG: Report name:", st.session_state.get("audit_report_name"))
-                print("DEBUG: Query SQL:", st.session_state.get("audit_query_sql"))
-                traceback.print_exc()
-
+                # Log audit with visible feedback
                 try:
-                    finalize_audit(session, st.session_state, success=False)
-                    print("DEBUG: finalize_audit completed successfully for error")
-                except Exception as e:
-                    print("⚠️ Audit logging failed on exception:", e)
-                    traceback.print_exc()
-                    
-                st.error(f"⚠️ An error occurred while running the query: {e}")
+                    finalize_audit(session, st.session_state, success=False, show_ui=True)
+                except Exception as audit_err:
+                    st.error(f"⚠️ Audit logging error: {audit_err}")
