@@ -31,18 +31,7 @@ try:
 except Exception as e:
     st.error(e)
 
-# All the authentication info is stored in the session_state
-if st.session_state["authentication_status"]:
-    # User is connected
-    authenticator.logout('Logout', 'main')
-elif st.session_state["authentication_status"] == False:
-    st.error('Username/password is incorrect')
-    # Stop the rendering if the user isn't connected
-    st.stop()
-elif st.session_state["authentication_status"] == None:
-    st.warning('Please enter your username and password')
-    # Stop the rendering if the user isn't connected
-    st.stop()
+# -------- FORGOT PASSWORD -------- #
 
 with st.sidebar.expander("🔑 Forgot Password"):
     try:
@@ -78,6 +67,19 @@ with st.sidebar.expander("👤 Register New User"):
 
     except Exception as e:
         st.error(e)
+
+# All the authentication info is stored in the session_state
+if st.session_state["authentication_status"]:
+    # User is connected
+    authenticator.logout('Logout', 'main')
+elif st.session_state["authentication_status"] == False:
+    st.error('Username/password is incorrect')
+    # Stop the rendering if the user isn't connected
+    st.stop()
+elif st.session_state["authentication_status"] == None:
+    st.warning('Please enter your username and password')
+    # Stop the rendering if the user isn't connected
+    st.stop()
 
 # ===== PERFORMANCE OPTIMIZATION 1: Cache Snowflake Session =====
 # This prevents reconnecting to Snowflake on every rerun
