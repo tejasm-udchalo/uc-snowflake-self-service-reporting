@@ -44,6 +44,40 @@ elif st.session_state["authentication_status"] == None:
     # Stop the rendering if the user isn't connected
     st.stop()
 
+with st.sidebar.expander("🔑 Forgot Password"):
+    try:
+        username, email, new_password = authenticator.forgot_password()
+
+        if username:
+            st.success("New password generated. Share securely with user.")
+            st.info(f"Temporary Password: {new_password}")
+
+            # Save updated config
+            with open('./credentials.yml', 'w') as file:
+                yaml.dump(config, file)
+
+        elif username is False:
+            st.error("Username not found")
+
+    except Exception as e:
+        st.error(e)
+
+# -------- REGISTER USER -------- #
+
+with st.sidebar.expander("👤 Register New User"):
+
+    try:
+        email, username, name = authenticator.register_user()
+
+        if email:
+            st.success("User registered successfully")
+
+            # Save updated config
+            with open('./credentials.yml', 'w') as file:
+                yaml.dump(config, file)
+
+    except Exception as e:
+        st.error(e)
 
 # ===== PERFORMANCE OPTIMIZATION 1: Cache Snowflake Session =====
 # This prevents reconnecting to Snowflake on every rerun
