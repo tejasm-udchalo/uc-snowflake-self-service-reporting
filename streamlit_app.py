@@ -291,14 +291,14 @@ st.title("Snowflake Self Service Reporting Portal")
 # ===== PERFORMANCE OPTIMIZATION 2: Cache Report List =====
 # Reports don't change often, so cache them to avoid repeated queries
 @st.cache_data
-def get_reports():
+def get_reports(session):
     df = session.sql("""
         SELECT report_name, table_name
         FROM ANALYTICS.GOLD.STREAMLIT_REPORT_CONFIG
     """).to_pandas()
     return df
 
-reports_df = get_reports()
+reports_df = get_reports(session)
 
 # Initialize session state for report selection (prevents unnecessary state changes)
 if "selected_report" not in st.session_state:
