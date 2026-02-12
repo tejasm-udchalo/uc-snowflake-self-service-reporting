@@ -74,7 +74,7 @@ with st.sidebar.expander("🔑 Forgot Password"):
 
     try:
         with st.form("forgot_password_form"):
-            fp_username = st.text_input("Username")
+            fp_username = st.text_input("Username", key="fp_username")
             submit_fp = st.form_submit_button("Reset Password")
             if submit_fp:
                 if not fp_username:
@@ -89,9 +89,7 @@ with st.sidebar.expander("🔑 Forgot Password"):
                     if user_df.empty:
                         st.error("Username not found")
                     else:
-                        import secrets
-                        import string
-                        import hashlib
+                        import secrets, string, hashlib
                         # Generate random temp password
                         alphabet = string.ascii_letters + string.digits
                         temp_password = ''.join(
@@ -109,6 +107,8 @@ with st.sidebar.expander("🔑 Forgot Password"):
                         """).collect()
                         st.success("Temporary password generated")
                         st.info(f"Temporary Password: {temp_password}")
+                        st.session_state.fp_username = ""
+                        st.rerun()
     except Exception as e:
         st.error(e)
 
@@ -134,9 +134,7 @@ with st.sidebar.expander("👤 Register New User"):
                     if not exists_df.empty:
                         st.error("Username already exists")
                     else:
-                        import secrets
-                        import string
-                        import hashlib
+                        import secrets, string, hashlib
                         # Generate password
                         alphabet = string.ascii_letters + string.digits
                         generated_password = ''.join(
@@ -164,6 +162,11 @@ with st.sidebar.expander("👤 Register New User"):
                         """).collect()
                         st.success("User registered successfully")
                         st.info(f"Temporary Password: {generated_password}")
+                        # ✅ CLEAR FORM
+                        st.session_state.reg_username = ""
+                        st.session_state.reg_firstname = ""
+                        st.session_state.reg_lastname = ""
+                        st.rerun()
     except Exception as e:
         st.error(e)
 
