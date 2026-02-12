@@ -186,14 +186,16 @@ with st.sidebar.expander("👤 Register New User"):
                                 USERNAME,
                                 FIRST_NAME,
                                 LAST_NAME,
-                                PASSWORD_HASH
+                                PASSWORD_HASH,
+                                IS_USER_AUTHORIZED
                             )
                             SELECT
                                 UUID_STRING(),
                                 '{reg_username}',
                                 '{reg_firstname}',
                                 '{reg_lastname}',
-                                '{password_hash}'
+                                '{password_hash}',
+                                'PENDING'
                         """).collect()
                         # Store password for display AFTER rerun
                         st.session_state.reg_temp_password = generated_password
@@ -202,8 +204,8 @@ with st.sidebar.expander("👤 Register New User"):
 
         # Show password AFTER rerun
         if st.session_state.reg_temp_password:
-            st.success("User registered successfully")
-            st.info(f"Temporary Password: {st.session_state.reg_temp_password}")
+            st.success("Registration submitted successfully")
+            st.info("Your account is pending admin approval.")
 
             # Clear once shown
             st.session_state.reg_temp_password = None
@@ -213,17 +215,33 @@ with st.sidebar.expander("👤 Register New User"):
 
 # All the authentication info is stored in the session_state
 if st.session_state["authentication_status"]:
-    # User is connected
-    st.session_state["username"] = st.session_state.get("name")
+    # Get logged in username correctly
+    logged_user = st.session_state.get("username")
+    # Check authorization from Snowflake
+    auth_status_df = session.sql(f"""
+        SELECT IS_USER_AUTHORIZED
+        FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
+        WHERE USERNAME = '{logged_user}'
+    """).to_pandas()
+    if auth_status_df.empty:
+        st.error("User not found in authorization table")
+        authenticator.logout('Logout', 'main')
+        st.stop()
+    user_status = auth_status_df.iloc[0]["IS_USER_AUTHORIZED"]
+    # ---- BLOCK NON APPROVED USERS ----
+    if user_status != "APPROVED":
+        st.warning("Your account is pending admin approval")
+        authenticator.logout('Logout', 'main')
+        st.stop()
+    # ---- APPROVED USER ----
     authenticator.logout('Logout', 'main')
 elif st.session_state["authentication_status"] == False:
     st.error('Username/password is incorrect')
-    # Stop the rendering if the user isn't connected
     st.stop()
 elif st.session_state["authentication_status"] == None:
     st.warning('Please enter your username and password')
-    # Stop the rendering if the user isn't connected
     st.stop()
+
 
 # Custom CSS
 st.markdown("""
