@@ -2,6 +2,7 @@ import streamlit as st
 import base64
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
+from functools import lru_cache
 
 
 _CIPHER_CACHE = {}
@@ -40,26 +41,34 @@ def decrypt(data, version):
     """
     Decrypts full encrypted hex string.
     """
-
     try:
-        if data is None or data == "":
-            return data
-
-        cipher = _get_cipher(version)
-        decryptor = cipher.decryptor()
-
-        decrypted_data = (
-            decryptor.update(bytes.fromhex(data))
-            + decryptor.finalize()
-        )
-
-        return "".join(
-            char for char in decrypted_data.decode("utf-8")
-            if char.isprintable()
-        )
-
+        # Delegate to cached decrypt helper to avoid repeated work
+        return _decrypt_cached(data, version)
     except Exception:
         return data
+
+
+@lru_cache(maxsize=200000)
+def _decrypt_cached(data_hex: str, version: str) -> str:
+    """
+    Cached low-level decrypt function. Uses hex string + version as cache key.
+    Returns decrypted printable string or raises on failure.
+    """
+    if data_hex is None or data_hex == "":
+        return data_hex
+
+    cipher = _get_cipher(version)
+    decryptor = cipher.decryptor()
+
+    decrypted_data = (
+        decryptor.update(bytes.fromhex(data_hex))
+        + decryptor.finalize()
+    )
+
+    return "".join(
+        char for char in decrypted_data.decode("utf-8")
+        if char.isprintable()
+    )
 
 def decrypt_tokenized(data, version):
     """
@@ -78,8 +87,10 @@ def decrypt_tokenized(data, version):
 
         first_part = parts[0]
 
+        # Use cached low-level decrypt for each token
         decrypted_parts = [
-            decrypt(part, version) for part in parts[1:]
+            _decrypt_cached(part, version) if part and part != "" else part
+            for part in parts[1:]
         ]
 
         return first_part + " " + " ".join(decrypted_parts)
@@ -98,7 +109,8 @@ def decrypt_split_full(data, version):
         parts = str(data).split()
 
         decrypted_parts = [
-            decrypt(part, version) for part in parts
+            _decrypt_cached(part, version) if part and part != "" else part
+            for part in parts
         ]
 
         return " ".join(decrypted_parts)
