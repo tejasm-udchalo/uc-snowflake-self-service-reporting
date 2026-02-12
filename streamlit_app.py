@@ -27,7 +27,6 @@ def load_config_from_secrets():
         users = st.secrets["credentials"]["usernames"]
         for username, user_data in users.items():
             credentials["usernames"][username] = {
-                "email": user_data["email"],
                 "first_name": user_data["first_name"],
                 "last_name": user_data["last_name"],
                 "password": user_data["password"],
