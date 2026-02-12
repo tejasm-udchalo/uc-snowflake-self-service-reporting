@@ -145,6 +145,9 @@ with st.sidebar.expander("🔑 Forgot Password"):
 if "clear_reg_form" not in st.session_state:
     st.session_state.clear_reg_form = False
 
+if "reg_success_msg" not in st.session_state:
+    st.session_state.reg_success_msg = False
+
 # ---- Clear form BEFORE widgets render ----
 if st.session_state.clear_reg_form:
     st.session_state.reg_username = ""
@@ -217,12 +220,14 @@ with st.sidebar.expander("👤 Register New User"):
                             """,
                             params=[reg_username, reg_firstname, reg_lastname, password_hash]
                         )
-                        st.success("Registration submitted successfully")
-                        st.info("Your account is pending admin approval.")
-
-                        # Store password for display AFTER rerun
+                        st.session_state.reg_success_msg = True
                         st.session_state.clear_reg_form = True
                         st.rerun()
+
+        if st.session_state.reg_success_msg:
+            st.success("Registration submitted successfully")
+            st.info("Your account is pending admin approval.")
+            st.session_state.reg_success_msg = False
 
     except Exception as e:
         st.error(e)
