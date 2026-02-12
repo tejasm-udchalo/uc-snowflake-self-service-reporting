@@ -79,194 +79,203 @@ try:
 except Exception as e:
     st.error(e)
 
-# -------- FORGOT PASSWORD -------- #
-if "clear_fp_form" not in st.session_state:
-    st.session_state.clear_fp_form = False
+# ---------------- AUTHORIZATION CACHE ---------------- #
+@st.cache_data(ttl=300, show_spinner=False)
+def get_user_auth(username):
+    return execute_select(
+        """
+        SELECT IS_USER_AUTHORIZED
+        FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
+        WHERE USERNAME = ?
+        """,
+        params=[username]
+    )
 
-if "fp_temp_password" not in st.session_state:
-    st.session_state.fp_temp_password = None
+# ---------------- SIDEBAR AUTH UI (ONLY BEFORE LOGIN) ---------------- #
+if not st.session_state.get("authentication_status"):
 
-# Clear form BEFORE widget render
-if st.session_state.clear_fp_form:
-    st.session_state.fp_username = ""
-    st.session_state.clear_fp_form = False
+    # -------- FORGOT PASSWORD -------- #
+    if "clear_fp_form" not in st.session_state:
+        st.session_state.clear_fp_form = False
 
-with st.sidebar.expander("🔑 Forgot Password"):
+    if "fp_temp_password" not in st.session_state:
+        st.session_state.fp_temp_password = None
 
-    try:
-        with st.form("forgot_password_form"):
-            fp_username = st.text_input("Username", key="fp_username")
-            submit_fp = st.form_submit_button("Reset Password")
-            if submit_fp:
-                if not fp_username:
-                    st.error("Username is required")
-                else:
-                    # Check user exists
-                    user_df = execute_select(
-                        """
-                        SELECT USERNAME
-                        FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
-                        WHERE USERNAME = ?
-                        """,
-                        params=[fp_username]
-                    )
-                    if user_df.empty:
-                        st.error("Username not found")
+    # Clear form BEFORE widget render
+    if st.session_state.clear_fp_form:
+        st.session_state.fp_username = ""
+        st.session_state.clear_fp_form = False
+
+    with st.sidebar.expander("🔑 Forgot Password"):
+
+        try:
+            with st.form("forgot_password_form"):
+                fp_username = st.text_input("Username", key="fp_username")
+                submit_fp = st.form_submit_button("Reset Password")
+                if submit_fp:
+                    if not fp_username:
+                        st.error("Username is required")
                     else:
-                        import secrets, string
-                        # Generate random temp password
-                        alphabet = string.ascii_letters + string.digits
-                        temp_password = ''.join(
-                            secrets.choice(alphabet) for _ in range(10)
-                        )
-                        # Hash password
-                        password_hash = hashlib.sha256(
-                            temp_password.encode()
-                        ).hexdigest()
-                        # Update password in Snowflake
-                        execute_dml(
+                        # Check user exists
+                        user_df = execute_select(
                             """
-                            UPDATE ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
-                            SET PASSWORD_HASH = ?
+                            SELECT USERNAME
+                            FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
                             WHERE USERNAME = ?
                             """,
-                            params=[password_hash, fp_username]
+                            params=[fp_username]
                         )
-                        # Store output for next rerun
-                        st.session_state.fp_temp_password = temp_password
-                        st.session_state.clear_fp_form = True
-                        st.rerun()
-
-        # Show output AFTER rerun
-        if st.session_state.fp_temp_password:
-            st.success("Temporary password generated")
-            st.info(f"Temporary Password: {st.session_state.fp_temp_password}")
-            st.warning(
-                "Please login using this temporary password and contact Data Team to set your new password."
-            )
-            # Clear after showing once
-            st.session_state.fp_temp_password = None
-
-    except Exception as e:
-        st.error(e)
-
-# -------- REGISTER USER -------- #
-# ---- Session state flags ----
-if "clear_reg_form" not in st.session_state:
-    st.session_state.clear_reg_form = False
-
-if "reg_success_msg" not in st.session_state:
-    st.session_state.reg_success_msg = False
-
-# ---- Clear form BEFORE widgets render ----
-if st.session_state.clear_reg_form:
-    st.session_state.reg_username = ""
-    st.session_state.reg_firstname = ""
-    st.session_state.reg_lastname = ""
-    st.session_state.reg_password = ""
-    st.session_state.reg_confirm_password = ""
-    st.session_state.clear_reg_form = False
-
-with st.sidebar.expander("👤 Register New User"):
-
-    try:
-        with st.form("register_user_form"):
-            reg_username = st.text_input("Username", key="reg_username")
-            reg_firstname = st.text_input("First Name", key="reg_firstname")
-            reg_lastname = st.text_input("Last Name", key="reg_lastname")
-            reg_password = st.text_input(
-                "Password",
-                type="password",
-                key="reg_password"
-            )
-            reg_confirm_password = st.text_input(
-                "Confirm Password",
-                type="password",
-                key="reg_confirm_password"
-            )
-            submit_reg = st.form_submit_button("Register User")
-            if submit_reg:
-                if not reg_username:
-                    st.error("Username required")
-                elif reg_password != reg_confirm_password:
-                    st.error("Passwords do not match")
-                elif len(reg_password) < 6:
-                    st.error("Password must be at least 6 characters")
-                else:
-                    # Check if username exists
-                    exists_df = execute_select(
-                        """
-                        SELECT USERNAME
-                        FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
-                        WHERE USERNAME = ?
-                        """,
-                        params=[reg_username]
-                    )
-                    if not exists_df.empty:
-                        st.error("Username already exists")
-                    else:
-                        password_hash = hashlib.sha256(
-                            reg_password.encode()
-                        ).hexdigest()
-                        # Insert new user
-                        execute_dml(
-                            """
-                            INSERT INTO ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
-                            (
-                                USER_ID,
-                                USERNAME,
-                                FIRST_NAME,
-                                LAST_NAME,
-                                PASSWORD_HASH,
-                                IS_USER_AUTHORIZED
+                        if user_df.empty:
+                            st.error("Username not found")
+                        else:
+                            import secrets, string
+                            # Generate random temp password
+                            alphabet = string.ascii_letters + string.digits
+                            temp_password = ''.join(
+                                secrets.choice(alphabet) for _ in range(10)
                             )
-                            SELECT
-                                UUID_STRING(),
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                'PENDING'
+                            # Hash password
+                            password_hash = hashlib.sha256(
+                                temp_password.encode()
+                            ).hexdigest()
+                            # Update password in Snowflake
+                            execute_dml(
+                                """
+                                UPDATE ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
+                                SET PASSWORD_HASH = ?
+                                WHERE USERNAME = ?
+                                """,
+                                params=[password_hash, fp_username]
+                            )
+                            # Store output for next rerun
+                            st.session_state.fp_temp_password = temp_password
+                            st.session_state.clear_fp_form = True
+                            st.rerun()
+
+            # Show output AFTER rerun
+            if st.session_state.fp_temp_password:
+                st.success("Temporary password generated")
+                st.info(f"Temporary Password: {st.session_state.fp_temp_password}")
+                st.warning(
+                    "Please login using this temporary password and contact Data Team to set your new password."
+                )
+                # Clear after showing once
+                st.session_state.fp_temp_password = None
+
+        except Exception as e:
+            st.error(e)
+
+    # -------- REGISTER USER -------- #
+    # ---- Session state flags ----
+    if "clear_reg_form" not in st.session_state:
+        st.session_state.clear_reg_form = False
+
+    if "reg_success_msg" not in st.session_state:
+        st.session_state.reg_success_msg = False
+
+    # ---- Clear form BEFORE widgets render ----
+    if st.session_state.clear_reg_form:
+        st.session_state.reg_username = ""
+        st.session_state.reg_firstname = ""
+        st.session_state.reg_lastname = ""
+        st.session_state.reg_password = ""
+        st.session_state.reg_confirm_password = ""
+        st.session_state.clear_reg_form = False
+
+    with st.sidebar.expander("👤 Register New User"):
+
+        try:
+            with st.form("register_user_form"):
+                reg_username = st.text_input("Username", key="reg_username")
+                reg_firstname = st.text_input("First Name", key="reg_firstname")
+                reg_lastname = st.text_input("Last Name", key="reg_lastname")
+                reg_password = st.text_input(
+                    "Password",
+                    type="password",
+                    key="reg_password"
+                )
+                reg_confirm_password = st.text_input(
+                    "Confirm Password",
+                    type="password",
+                    key="reg_confirm_password"
+                )
+                submit_reg = st.form_submit_button("Register User")
+                if submit_reg:
+                    if not reg_username:
+                        st.error("Username required")
+                    elif reg_password != reg_confirm_password:
+                        st.error("Passwords do not match")
+                    elif len(reg_password) < 6:
+                        st.error("Password must be at least 6 characters")
+                    else:
+                        # Check if username exists
+                        exists_df = execute_select(
+                            """
+                            SELECT USERNAME
+                            FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
+                            WHERE USERNAME = ?
                             """,
-                            params=[reg_username, reg_firstname, reg_lastname, password_hash]
+                            params=[reg_username]
                         )
-                        st.session_state.reg_success_msg = True
-                        st.session_state.clear_reg_form = True
-                        st.rerun()
+                        if not exists_df.empty:
+                            st.error("Username already exists")
+                        else:
+                            password_hash = hashlib.sha256(
+                                reg_password.encode()
+                            ).hexdigest()
+                            # Insert new user
+                            execute_dml(
+                                """
+                                INSERT INTO ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
+                                (
+                                    USER_ID,
+                                    USERNAME,
+                                    FIRST_NAME,
+                                    LAST_NAME,
+                                    PASSWORD_HASH,
+                                    IS_USER_AUTHORIZED
+                                )
+                                SELECT
+                                    UUID_STRING(),
+                                    ?,
+                                    ?,
+                                    ?,
+                                    ?,
+                                    'PENDING'
+                                """,
+                                params=[reg_username, reg_firstname, reg_lastname, password_hash]
+                            )
+                            st.session_state.reg_success_msg = True
+                            st.session_state.clear_reg_form = True
+                            st.rerun()
 
-        if st.session_state.reg_success_msg:
-            st.success("Registration submitted successfully")
-            st.info("Your account is pending admin approval.")
-            st.session_state.reg_success_msg = False
+            if st.session_state.reg_success_msg:
+                st.success("Registration submitted successfully")
+                st.info("Your account is pending admin approval.")
+                st.session_state.reg_success_msg = False
 
-    except Exception as e:
-        st.error(e)
+        except Exception as e:
+            st.error(e)
 
 # All the authentication info is stored in the session_state
 if st.session_state["authentication_status"]:
     # Get logged in username correctly
     logged_user = st.session_state.get("username")
     # Check authorization from Snowflake
-    auth_status_df = execute_select(
-        """
-        SELECT IS_USER_AUTHORIZED
-        FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
-        WHERE USERNAME = ?
-        """,
-        params=[logged_user]
-    )
+    auth_status_df = get_user_auth(logged_user)
+
     if auth_status_df.empty:
         st.error("User not found in authorization table")
         authenticator.logout('Logout', 'main')
         st.stop()
-    user_status = auth_status_df.iloc[0]["IS_USER_AUTHORIZED"]
     # ---- BLOCK NON APPROVED USERS ----
-    if user_status != "APPROVED":
+    if auth_status_df.iloc[0]["IS_USER_AUTHORIZED"] != "APPROVED":
         st.warning("Your account is pending admin approval")
         authenticator.logout('Logout', 'main')
         st.stop()
     # ---- APPROVED USER ----
     authenticator.logout('Logout', 'main')
+    
 elif st.session_state["authentication_status"] == False:
     st.error('Username/password is incorrect')
     st.stop()
