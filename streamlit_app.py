@@ -10,6 +10,15 @@ import traceback
 # ---------------- PAGE CONFIG ---------------- #
 st.set_page_config(page_title="Snowflake Reporting", layout="wide")
 
+# ===== PERFORMANCE OPTIMIZATION 1: Cache Snowflake Session =====
+# This prevents reconnecting to Snowflake on every rerun
+# Using @st.cache_resource ensures the session persists across reruns
+@st.cache_resource
+def get_session():
+    return get_snowflake_session()
+
+session = get_session()
+
 # ---------------- LOAD CONFIG FROM SECRETS ---------------- #
 
 def load_config_from_secrets():
@@ -61,19 +70,102 @@ except Exception as e:
     st.error(e)
 
 # -------- FORGOT PASSWORD -------- #
-
 with st.sidebar.expander("🔑 Forgot Password"):
+
     try:
-        username, email, new_password = authenticator.forgot_password()
+        with st.form("forgot_password_form"):
+            fp_username = st.text_input("Username")
+            submit_fp = st.form_submit_button("Reset Password")
+            if submit_fp:
+                if not fp_username:
+                    st.error("Username is required")
+                else:
+                    # Check user exists
+                    user_df = session.sql(f"""
+                        SELECT USERNAME
+                        FROM ANALYTICS.GOLD.STREAMLIT_USERS
+                        WHERE USERNAME = '{fp_username}'
+                    """).to_pandas()
+                    if user_df.empty:
+                        st.error("Username not found")
+                    else:
+                        import secrets
+                        import string
+                        import hashlib
+                        # Generate random temp password
+                        alphabet = string.ascii_letters + string.digits
+                        temp_password = ''.join(
+                            secrets.choice(alphabet) for _ in range(10)
+                        )
+                        # Hash password
+                        password_hash = hashlib.sha256(
+                            temp_password.encode()
+                        ).hexdigest()
+                        # Update password in Snowflake
+                        session.sql(f"""
+                            UPDATE ANALYTICS.GOLD.STREAMLIT_USERS
+                            SET PASSWORD_HASH = '{password_hash}'
+                            WHERE USERNAME = '{fp_username}'
+                        """).collect()
+                        st.success("Temporary password generated")
+                        st.info(f"Temporary Password: {temp_password}")
+    except Exception as e:
+        st.error(e)
 
-        if username:
-            st.success("New password generated. Share securely with user.")
-            st.info(f"Temporary Password: {new_password}")
-            # Save updated config
-            st.session_state.auth_config = config
-        elif username is False:
-            st.error("Username not found")
-
+# -------- REGISTER USER -------- #
+with st.sidebar.expander("👤 Register New User"):
+    
+    try:
+        with st.form("register_user_form"):
+            reg_username = st.text_input("Username")
+            reg_firstname = st.text_input("First Name")
+            reg_lastname = st.text_input("Last Name")
+            submit_reg = st.form_submit_button("Register User")
+            if submit_reg:
+                if not reg_username:
+                    st.error("Username required")
+                else:
+                    # Check if username exists
+                    exists_df = session.sql(f"""
+                        SELECT USERNAME
+                        FROM ANALYTICS.GOLD.STREAMLIT_USERS
+                        WHERE USERNAME = '{reg_username}'
+                    """).to_pandas()
+                    if not exists_df.empty:
+                        st.error("Username already exists")
+                    else:
+                        import secrets
+                        import string
+                        import hashlib
+                        # Generate password
+                        alphabet = string.ascii_letters + string.digits
+                        generated_password = ''.join(
+                            secrets.choice(alphabet) for _ in range(10)
+                        )
+                        password_hash = hashlib.sha256(
+                            generated_password.encode()
+                        ).hexdigest()
+                        # Insert new user
+                        session.sql(f"""
+                            INSERT INTO ANALYTICS.GOLD.STREAMLIT_USERS
+                            (
+                                USER_ID,
+                                USERNAME,
+                                FIRST_NAME,
+                                LAST_NAME,
+                                PASSWORD_HASH
+                            )
+                            VALUES
+                            (
+                                UUID_STRING(),
+                                '{reg_username}',
+                                '{reg_firstname}',
+                                '{reg_lastname}',
+                                '{password_hash}'
+                            )
+                        """).collect()
+                        st.success("User registered successfully")
+                        st.info(f"Temporary Password: {generated_password}")
     except Exception as e:
         st.error(e)
 
@@ -90,15 +182,6 @@ elif st.session_state["authentication_status"] == None:
     st.warning('Please enter your username and password')
     # Stop the rendering if the user isn't connected
     st.stop()
-
-# ===== PERFORMANCE OPTIMIZATION 1: Cache Snowflake Session =====
-# This prevents reconnecting to Snowflake on every rerun
-# Using @st.cache_resource ensures the session persists across reruns
-@st.cache_resource
-def get_session():
-    return get_snowflake_session()
-
-session = get_session()
 
 # Custom CSS
 st.markdown("""
