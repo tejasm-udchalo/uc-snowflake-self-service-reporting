@@ -275,7 +275,7 @@ if st.session_state["authentication_status"]:
         st.stop()
     # ---- APPROVED USER ----
     authenticator.logout('Logout', 'main')
-    
+
 elif st.session_state["authentication_status"] == False:
     st.error('Username/password is incorrect')
     st.stop()
@@ -283,308 +283,320 @@ elif st.session_state["authentication_status"] == None:
     st.warning('Please enter your username and password')
     st.stop()
 
+# ---------------- UI CONTAINER ---------------- #
+main = st.container()
 
-# Custom CSS
-st.markdown("""
-<style>
-div[data-testid="stMarkdownContainer"] p {
-    margin-bottom: 4px;
-}
+with main:
 
-hr {
-    margin-top: 0px !important;
-    margin-bottom: 4px !important;
-}
+    # Custom CSS
+    st.markdown("""
+    <style>
+    div[data-testid="stMarkdownContainer"] p {
+        margin-bottom: 4px;
+    }
 
-.logic-select {
-    display: flex;
-    justify-content: center;
-    margin-top: -8px;
-    margin-bottom: -8px;
-}
-</style>
-""", unsafe_allow_html=True)
+    hr {
+        margin-top: 0px !important;
+        margin-bottom: 4px !important;
+    }
 
-st.title("Snowflake Self Service Reporting Portal")
+    .logic-select {
+        display: flex;
+        justify-content: center;
+        margin-top: -8px;
+        margin-bottom: -8px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-# ===== PERFORMANCE OPTIMIZATION 2: Cache Report List =====
-# Reports don't change often, so cache them to avoid repeated queries
-@st.cache_data(ttl=600, show_spinner=False)
-def get_reports(_session):
-    df = _session.sql("""
-        SELECT report_name, table_name
-        FROM ANALYTICS.GOLD.STREAMLIT_REPORT_CONFIG
-    """).to_pandas()
-    return df
+    st.title("udChalo Self Service Reporting Portal")
 
-reports_df = get_reports(session)
+    # ===== PERFORMANCE OPTIMIZATION 2: Cache Report List =====
+    # Reports don't change often, so cache them to avoid repeated queries
+    @st.cache_data(ttl=600, show_spinner=False)
+    def get_reports(_session):
+        df = _session.sql("""
+            SELECT report_name, table_name
+            FROM ANALYTICS.GOLD.STREAMLIT_REPORT_CONFIG
+        """).to_pandas()
+        return df
 
-# Initialize session state for report selection (prevents unnecessary state changes)
-if "selected_report" not in st.session_state:
-    st.session_state.selected_report = reports_df["REPORT_NAME"].iloc[0]
+    reports_df = get_reports(session)
+
+    # ===== CACHE REPORT → TABLE MAP =====
+    @st.cache_data(show_spinner=False)
+    def build_report_mapping(df):
+        return dict(zip(df["REPORT_NAME"], df["TABLE_NAME"]))
+
+    report_table_map = build_report_mapping(reports_df)
+
+    # Initialize session state for report selection (prevents unnecessary state changes)
+    if "selected_report" not in st.session_state:
+        st.session_state.selected_report = reports_df["REPORT_NAME"].iloc[0]
+
+    report_list = reports_df["REPORT_NAME"].tolist()
 
 # Report selection with callback (on_change prevents full rerun from dropdown changes)
-report_name = st.selectbox(
-    "**Select Report**",
-    reports_df["REPORT_NAME"],
-    index=list(reports_df["REPORT_NAME"]).index(st.session_state.selected_report),
-    key="report_selectbox",
-    on_change=lambda: setattr(st.session_state, "selected_report", st.session_state.report_selectbox)
-)
+    report_name = st.selectbox(
+        "**Select Report**",
+        report_list,
+        index=report_list.index(st.session_state.selected_report),
+        key="report_selectbox",
+        on_change=lambda: setattr(st.session_state, "selected_report", st.session_state.report_selectbox)
+    )
 
-# Get table name for selected report
-table_name = reports_df[
-    reports_df["REPORT_NAME"] == report_name
-]["TABLE_NAME"].values[0]
+    # Get table name for selected report
+    table_name = report_table_map[report_name]
 
 # ===== PERFORMANCE OPTIMIZATION 3: Cache Column Names =====
 # Column names are queried per table, cache them so we don't fetch when same table is selected
-@st.cache_data(show_spinner=False)
-def get_columns(table_name):
-    parts = table_name.split(".")
+    @st.cache_data(show_spinner=False)
+    def get_columns_cached(table_name):
+        parts = table_name.split(".")
 
-    if len(parts) == 3:
-        database, schema, table = parts
-    elif len(parts) == 2:
-        database = session.get_current_database()
-        schema, table = parts
-    else:
-        database = session.get_current_database()
-        schema = session.get_current_schema()
-        table = parts[0]
-
-    query = f"""
-        SELECT COLUMN_NAME
-        FROM {database.upper()}.INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = '{schema.upper()}'
-        AND TABLE_NAME = '{table.upper()}'
-        ORDER BY ORDINAL_POSITION
-    """
-
-    df = session.sql(query).to_pandas()
-    return df["COLUMN_NAME"].tolist()
-
-columns = get_columns(table_name)
-
-# Filter Builder UI
-st.subheader("Filters")
-
-if "filters" not in st.session_state:
-    st.session_state.filters = [{}]
-
-filters_sql = []
-validation_error = False
-
-# Column Headings
-h1, h2, h3, h4 = st.columns([4, 4, 4, 1])
-h1.markdown("**Column**")
-h2.markdown("**Operator**")
-h3.markdown("**Value**")
-h4.markdown("")
-
-st.divider()
-
-# Build filter rows dynamically
-for i in range(len(st.session_state.filters)):
-
-    # AND / OR selector for filters after the first
-    if i > 0:
-        c_left, c_mid, c_right = st.columns([4, 2, 6])
-        with c_mid:
-            logic = st.selectbox(
-                "",
-                ["AND", "OR"],
-                key=f"logic_{i}",
-            )
-    else:
-        logic = None
-
-    col1, col2, col3, col4 = st.columns([4, 4, 4, 1], vertical_alignment="bottom")
-
-    with col1:
-        column = st.selectbox("", columns, key=f"column_{i}")
-
-    with col2:
-        operator = st.selectbox(
-            "",
-            ["=", ">", "<", ">=", "<=", "LIKE", "IN", "IS NULL", "IS NOT NULL"],
-            key=f"operator_{i}"
-        )
-
-    with col3:
-        disable_value = operator in ["IS NULL", "IS NOT NULL"]
-        value = st.text_input(
-            "",
-            key=f"value_{i}",
-            disabled=disable_value,
-            placeholder="Comma separated values for IN"
-        )
-
-    with col4:
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-        if i > 0:
-            if st.button("✕", key=f"remove_{i}"):
-                st.session_state.filters.pop(i)
-                for key in [f"logic_{i}", f"column_{i}", f"operator_{i}", f"value_{i}"]:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.rerun()
-
-    # Build SQL for this filter
-    if column and operator:
-        condition_sql = ""
-
-        if operator in ["IS NULL", "IS NOT NULL"]:
-            condition_sql = f"{column} {operator}"
-
-        elif operator == "IN":
-            if value.strip() == "":
-                validation_error = True
-            else:
-                values = [v.strip() for v in value.split(",") if v.strip()]
-                in_clause = ", ".join([f"'{v}'" for v in values])
-                condition_sql = f"{column} IN ({in_clause})"
-
-        elif operator == "LIKE":
-            if value.strip() == "":
-                validation_error = True
-            else:
-                like_value = value.strip()
-                # Add % automatically if user did not provide
-                if "%" not in like_value:
-                    like_value = f"%{like_value}%"
-                condition_sql = f"{column} LIKE '{like_value}'"
-
+        if len(parts) == 3:
+            database, schema, table = parts
+        elif len(parts) == 2:
+            database = session.get_current_database()
+            schema, table = parts
         else:
-            if value.strip() == "":
-                validation_error = True
+            database = session.get_current_database()
+            schema = session.get_current_schema()
+            table = parts[0]
+
+        query = f"""
+            SELECT COLUMN_NAME
+            FROM {database.upper()}.INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = '{schema.upper()}'
+            AND TABLE_NAME = '{table.upper()}'
+            ORDER BY ORDINAL_POSITION
+        """
+
+        df = session.sql(query).to_pandas()
+        return df["COLUMN_NAME"].tolist()
+
+    columns = get_columns_cached(table_name)
+
+    # Filter Builder UI
+    st.subheader("Filters")
+
+    if "filters" not in st.session_state:
+        st.session_state.filters = [{}]
+
+    filters_sql = []
+    validation_error = False
+
+    # Column Headings
+    h1, h2, h3, h4 = st.columns([4, 4, 4, 1])
+    h1.markdown("**Column**")
+    h2.markdown("**Operator**")
+    h3.markdown("**Value**")
+    h4.markdown("")
+
+    st.divider()
+
+    # Build filter rows dynamically
+    for i in range(len(st.session_state.filters)):
+
+        # AND / OR selector for filters after the first
+        if i > 0:
+            c_left, c_mid, c_right = st.columns([4, 2, 6])
+            with c_mid:
+                logic = st.selectbox(
+                    "",
+                    ["AND", "OR"],
+                    key=f"logic_{i}",
+                )
+        else:
+            logic = None
+
+        col1, col2, col3, col4 = st.columns([4, 4, 4, 1], vertical_alignment="bottom")
+
+        with col1:
+            column = st.selectbox("", columns, key=f"column_{i}")
+
+        with col2:
+            operator = st.selectbox(
+                "",
+                ["=", ">", "<", ">=", "<=", "LIKE", "IN", "IS NULL", "IS NOT NULL"],
+                key=f"operator_{i}"
+            )
+
+        with col3:
+            disable_value = operator in ["IS NULL", "IS NOT NULL"]
+            value = st.text_input(
+                "",
+                key=f"value_{i}",
+                disabled=disable_value,
+                placeholder="Comma separated values for IN"
+            )
+
+        with col4:
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+            if i > 0:
+                if st.button("✕", key=f"remove_{i}"):
+                    st.session_state.filters.pop(i)
+                    for key in [f"logic_{i}", f"column_{i}", f"operator_{i}", f"value_{i}"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.rerun()
+
+        # Build SQL for this filter
+        if column and operator:
+            condition_sql = ""
+
+            if operator in ["IS NULL", "IS NOT NULL"]:
+                condition_sql = f"{column} {operator}"
+
+            elif operator == "IN":
+                if value.strip() == "":
+                    validation_error = True
+                else:
+                    values = [v.strip() for v in value.split(",") if v.strip()]
+                    in_clause = ", ".join([f"'{v}'" for v in values])
+                    condition_sql = f"{column} IN ({in_clause})"
+
+            elif operator == "LIKE":
+                if value.strip() == "":
+                    validation_error = True
+                else:
+                    like_value = value.strip()
+                    # Add % automatically if user did not provide
+                    if "%" not in like_value:
+                        like_value = f"%{like_value}%"
+                    condition_sql = f"{column} LIKE '{like_value}'"
+
             else:
-                condition_sql = f"{column} {operator} '{value}'"
+                if value.strip() == "":
+                    validation_error = True
+                else:
+                    condition_sql = f"{column} {operator} '{value}'"
 
-        if condition_sql:
-            if i == 0:
-                filters_sql.append(condition_sql)
-            else:
-                filters_sql.append(f"{logic} {condition_sql}")
+            if condition_sql:
+                if i == 0:
+                    filters_sql.append(condition_sql)
+                else:
+                    filters_sql.append(f"{logic} {condition_sql}")
 
-# Add filter button
-if st.button("➕ Add Filter"):
-    st.session_state.filters.append({})
-    st.rerun()
+    # Add filter button
+    if st.button("➕ Add Filter"):
+        st.session_state.filters.append({})
+        st.rerun()
 
-# Run / Cancel Query Section
-st.divider()
-st.text("")
+    # Run / Cancel Query Section
+    st.divider()
+    st.text("")
 
-if "audit_active" not in st.session_state:
-    st.session_state.audit_active = False
-if "audit_start_time" not in st.session_state:
-    st.session_state.audit_start_time = None
-if "audit_query_sql" not in st.session_state:
-    st.session_state.audit_query_sql = None
-if "audit_report_name" not in st.session_state:
-    st.session_state.audit_report_name = None
+    if "audit_active" not in st.session_state:
+        st.session_state.audit_active = False
+    if "audit_start_time" not in st.session_state:
+        st.session_state.audit_start_time = None
+    if "audit_query_sql" not in st.session_state:
+        st.session_state.audit_query_sql = None
+    if "audit_report_name" not in st.session_state:
+        st.session_state.audit_report_name = None
 
-# Initialize query tracking
-if "query_future" not in st.session_state:
-    st.session_state.query_future = None
-if "query_running" not in st.session_state:
-    st.session_state.query_running = False
-if "query_sql" not in st.session_state:
-    st.session_state.query_sql = None
+    # Initialize query tracking
+    if "query_future" not in st.session_state:
+        st.session_state.query_future = None
+    if "query_running" not in st.session_state:
+        st.session_state.query_running = False
+    if "query_sql" not in st.session_state:
+        st.session_state.query_sql = None
 
-col_run, col_cancel = st.columns([0.5, 0.5])
-with col_run:
-    run_clicked = st.button("Run Query", use_container_width=True)
+    col_run, col_cancel = st.columns([0.5, 0.5])
+    with col_run:
+        run_clicked = st.button("Run Query", use_container_width=True)
 
-with col_cancel:
-    cancel_clicked = st.button(
-        "Cancel Query",
-        disabled=not st.session_state.query_running,
-        use_container_width=True
-    )
+    with col_cancel:
+        cancel_clicked = st.button(
+            "Cancel Query",
+            disabled=not st.session_state.query_running,
+            use_container_width=True
+        )
 
-# Handle cancel query
-if cancel_clicked and st.session_state.query_future:
-    st.session_state.query_future.cancel()
-    st.session_state.query_running = False
-    st.session_state.query_future = None
+    # Handle cancel query
+    if cancel_clicked and st.session_state.query_future:
+        st.session_state.query_future.cancel()
+        st.session_state.query_running = False
+        st.session_state.query_future = None
 
-    try:
-        finalize_audit(session, st.session_state, canceled=True)
-    except Exception:
-        pass
+        try:
+            finalize_audit(session, st.session_state, canceled=True)
+        except Exception:
+            pass
 
-    st.warning("❌ Query was cancelled by user.")
-    st.stop()
-
-# Handle run query
-if run_clicked:
-    if validation_error:
-        st.error("⚠️ Please provide value for all required filters.")
+        st.warning("❌ Query was cancelled by user.")
         st.stop()
 
-    where_clause = " ".join(filters_sql)
-    query = f"SELECT * FROM {table_name}"
-    if where_clause:
-        query += f" WHERE {where_clause}"
+# Handle run query
+    if run_clicked:
+        if validation_error:
+            st.error("⚠️ Please provide value for all required filters.")
+            st.stop()
 
-    st.session_state.query_sql = query
-    st.session_state.query_running = True
-    st.session_state.audit_active = True
-    st.session_state.audit_start_time = time.time()
-    st.session_state.audit_query_sql = query
-    st.session_state.audit_report_name = report_name
-    st.rerun()  # Rerun to update UI and show enabled cancel button
+        where_clause = " ".join(filters_sql)
+        query = f"SELECT * FROM {table_name}"
+        if where_clause:
+            query += f" WHERE {where_clause}"
 
-# Execute query if running
-if st.session_state.query_running and st.session_state.query_future is None:
-    query = st.session_state.query_sql
-    
-    def execute_query(q):
-        return session.sql(q).to_pandas()
+        st.session_state.query_sql = query
+        st.session_state.query_running = True
+        st.session_state.audit_active = True
+        st.session_state.audit_start_time = time.time()
+        st.session_state.audit_query_sql = query
+        st.session_state.audit_report_name = report_name
+        st.rerun()  # Rerun to update UI and show enabled cancel button
 
-    with st.spinner("Running query... ⏳"):
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(execute_query, query)
-            st.session_state.query_future = future
-            try:
-                # 3 minutes timeout enforced
-                df = future.result(timeout=180)
-                st.session_state.query_running = False
-                st.session_state.query_future = None
+    # Execute query if running
+    if st.session_state.query_running and st.session_state.query_future is None:
+        
+        def execute_query(q):
+            return session.sql(q).to_pandas()
+        
+        query = st.session_state.query_sql
 
-                # Dynamic PII Decrypt
-                df = decrypt_dataframe(df, session, table_name)
-                st.dataframe(df)
-
-                csv = df.to_csv(index=False).encode("utf-8")
-                st.download_button("Download CSV", csv, file_name=f"{report_name}.csv")
-
-                # Log audit
+        with st.spinner("Running query... ⏳"):
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(execute_query, query)
+                st.session_state.query_future = future
                 try:
-                    finalize_audit(session, st.session_state, success=True, df=df)
-                except Exception:
-                    pass
+                    # 3 minutes timeout enforced
+                    df = future.result(timeout=180)
+                    st.session_state.query_running = False
+                    st.session_state.query_future = None
 
-            except concurrent.futures.TimeoutError:
-                st.session_state.query_running = False
-                st.session_state.query_future = None
+                    # Dynamic PII Decrypt
+                    df = decrypt_dataframe(df, session, table_name)
+                    st.dataframe(df)
 
-                # Log audit
-                try:
-                    finalize_audit(session, st.session_state, canceled=True)
-                except Exception:
-                    pass
+                    csv = df.to_csv(index=False).encode("utf-8")
+                    st.download_button("Download CSV", csv, file_name=f"{report_name}.csv")
 
-                st.error("⚠️ Query execution took too long (>3 minutes) and was cancelled. Please refine your filters.")
+                    # Log audit
+                    try:
+                        finalize_audit(session, st.session_state, success=True, df=df)
+                    except Exception:
+                        pass
 
-            except Exception as e:
-                st.session_state.query_running = False
-                st.session_state.query_future = None
+                except concurrent.futures.TimeoutError:
+                    st.session_state.query_running = False
+                    st.session_state.query_future = None
 
-                # Log audit
-                try:
-                    finalize_audit(session, st.session_state, success=False)
-                except Exception:
-                    pass
+                    # Log audit
+                    try:
+                        finalize_audit(session, st.session_state, canceled=True)
+                    except Exception:
+                        pass
+
+                    st.error("⚠️ Query execution took too long (>3 minutes) and was cancelled. Please refine your filters.")
+
+                except Exception as e:
+                    st.session_state.query_running = False
+                    st.session_state.query_future = None
+
+                    # Log audit
+                    try:
+                        finalize_audit(session, st.session_state, success=False)
+                    except Exception:
+                        pass
