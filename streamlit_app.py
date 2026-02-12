@@ -133,14 +133,29 @@ with st.sidebar.expander("🔑 Forgot Password"):
         st.error(e)
 
 # -------- REGISTER USER -------- #
+# ---- Session state flags ----
+if "clear_reg_form" not in st.session_state:
+    st.session_state.clear_reg_form = False
+
+if "reg_temp_password" not in st.session_state:
+    st.session_state.reg_temp_password = None
+
+# ---- Clear form BEFORE widgets render ----
+if st.session_state.clear_reg_form:
+    st.session_state.reg_username = ""
+    st.session_state.reg_firstname = ""
+    st.session_state.reg_lastname = ""
+    st.session_state.clear_reg_form = False
+
 with st.sidebar.expander("👤 Register New User"):
 
     try:
         with st.form("register_user_form"):
-            reg_username = st.text_input("Username")
-            reg_firstname = st.text_input("First Name")
-            reg_lastname = st.text_input("Last Name")
+            reg_username = st.text_input("Username", key="reg_username")
+            reg_firstname = st.text_input("First Name", key="reg_firstname")
+            reg_lastname = st.text_input("Last Name", key="reg_lastname")
             submit_reg = st.form_submit_button("Register User")
+
             if submit_reg:
                 if not reg_username:
                     st.error("Username required")
@@ -180,13 +195,19 @@ with st.sidebar.expander("👤 Register New User"):
                                 '{reg_lastname}',
                                 '{password_hash}'
                         """).collect()
-                        st.success("User registered successfully")
-                        st.info(f"Temporary Password: {generated_password}")
-                        # ✅ CLEAR FORM
-                        st.session_state.reg_username = ""
-                        st.session_state.reg_firstname = ""
-                        st.session_state.reg_lastname = ""
+                        # Store password for display AFTER rerun
+                        st.session_state.reg_temp_password = generated_password
+                        st.session_state.clear_reg_form = True
                         st.rerun()
+
+        # Show password AFTER rerun
+        if st.session_state.reg_temp_password:
+            st.success("User registered successfully")
+            st.info(f"Temporary Password: {st.session_state.reg_temp_password}")
+
+            # Clear once shown
+            st.session_state.reg_temp_password = None
+
     except Exception as e:
         st.error(e)
 
