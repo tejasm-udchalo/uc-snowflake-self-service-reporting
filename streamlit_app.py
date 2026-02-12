@@ -73,7 +73,10 @@ except Exception as e:
 if "clear_fp_form" not in st.session_state:
     st.session_state.clear_fp_form = False
 
-# Clear values BEFORE widget creation
+if "fp_temp_password" not in st.session_state:
+    st.session_state.fp_temp_password = None
+
+# Clear form BEFORE widget render
 if st.session_state.clear_fp_form:
     st.session_state.fp_username = ""
     st.session_state.clear_fp_form = False
@@ -113,10 +116,19 @@ with st.sidebar.expander("🔑 Forgot Password"):
                             SET PASSWORD_HASH = '{password_hash}'
                             WHERE USERNAME = '{fp_username}'
                         """).collect()
-                        st.success("Temporary password generated")
-                        st.info(f"Temporary Password: {temp_password}")
+                        # Store output for next rerun
+                        st.session_state.fp_temp_password = temp_password
                         st.session_state.clear_fp_form = True
                         st.rerun()
+
+        # Show output AFTER rerun
+        if st.session_state.fp_temp_password:
+            st.success("Temporary password generated")
+            st.info(f"Temporary Password: {st.session_state.fp_temp_password}")
+
+            # Clear after showing once
+            st.session_state.fp_temp_password = None
+
     except Exception as e:
         st.error(e)
 
