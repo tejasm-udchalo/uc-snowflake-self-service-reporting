@@ -300,7 +300,7 @@ st.title("Snowflake Self Service Reporting Portal")
 
 # ===== PERFORMANCE OPTIMIZATION 2: Cache Report List =====
 # Reports don't change often, so cache them to avoid repeated queries
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=600, show_spinner=False)
 def get_reports(_session):
     df = _session.sql("""
         SELECT report_name, table_name
@@ -330,7 +330,7 @@ table_name = reports_df[
 
 # ===== PERFORMANCE OPTIMIZATION 3: Cache Column Names =====
 # Column names are queried per table, cache them so we don't fetch when same table is selected
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def get_columns(table_name):
     parts = table_name.split(".")
 
