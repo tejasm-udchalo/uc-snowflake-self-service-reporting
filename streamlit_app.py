@@ -83,7 +83,7 @@ with st.sidebar.expander("🔑 Forgot Password"):
                     # Check user exists
                     user_df = session.sql(f"""
                         SELECT USERNAME
-                        FROM ANALYTICS.GOLD.STREAMLIT_USERS
+                        FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
                         WHERE USERNAME = '{fp_username}'
                     """).to_pandas()
                     if user_df.empty:
@@ -103,7 +103,7 @@ with st.sidebar.expander("🔑 Forgot Password"):
                         ).hexdigest()
                         # Update password in Snowflake
                         session.sql(f"""
-                            UPDATE ANALYTICS.GOLD.STREAMLIT_USERS
+                            UPDATE ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
                             SET PASSWORD_HASH = '{password_hash}'
                             WHERE USERNAME = '{fp_username}'
                         """).collect()
@@ -114,7 +114,7 @@ with st.sidebar.expander("🔑 Forgot Password"):
 
 # -------- REGISTER USER -------- #
 with st.sidebar.expander("👤 Register New User"):
-    
+
     try:
         with st.form("register_user_form"):
             reg_username = st.text_input("Username")
@@ -128,7 +128,7 @@ with st.sidebar.expander("👤 Register New User"):
                     # Check if username exists
                     exists_df = session.sql(f"""
                         SELECT USERNAME
-                        FROM ANALYTICS.GOLD.STREAMLIT_USERS
+                        FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
                         WHERE USERNAME = '{reg_username}'
                     """).to_pandas()
                     if not exists_df.empty:
@@ -147,7 +147,7 @@ with st.sidebar.expander("👤 Register New User"):
                         ).hexdigest()
                         # Insert new user
                         session.sql(f"""
-                            INSERT INTO ANALYTICS.GOLD.STREAMLIT_USERS
+                            INSERT INTO ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
                             (
                                 USER_ID,
                                 USERNAME,
