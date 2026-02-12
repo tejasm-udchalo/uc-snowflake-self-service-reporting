@@ -14,9 +14,19 @@ st.set_page_config(page_title="Snowflake Reporting", layout="wide")
 # ===== PERFORMANCE OPTIMIZATION 1: Cache Snowflake Session =====
 # This prevents reconnecting to Snowflake on every rerun
 # Using @st.cache_resource ensures the session persists across reruns
-@st.cache_resource
-def get_session():
+@st.cache_resource(show_spinner=False)
+def create_session():
     return get_snowflake_session()
+
+def get_session():
+    try:
+        session = create_session()
+        session.sql("SELECT 1").collect()
+        return session
+    except Exception:
+        create_session.clear()
+        session = create_session()
+        return session
 
 session = get_session()
 
@@ -290,7 +300,7 @@ st.title("Snowflake Self Service Reporting Portal")
 
 # ===== PERFORMANCE OPTIMIZATION 2: Cache Report List =====
 # Reports don't change often, so cache them to avoid repeated queries
-@st.cache_data
+@st.cache_data(ttl=600)
 def get_reports(_session):
     df = _session.sql("""
         SELECT report_name, table_name
