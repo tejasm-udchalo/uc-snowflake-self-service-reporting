@@ -161,7 +161,6 @@ with st.sidebar.expander("👤 Register New User"):
                                 '{reg_firstname}',
                                 '{reg_lastname}',
                                 '{password_hash}'
-                            )
                         """).collect()
                         st.success("User registered successfully")
                         st.info(f"Temporary Password: {generated_password}")
