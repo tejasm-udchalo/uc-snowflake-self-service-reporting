@@ -7,6 +7,9 @@ import concurrent.futures
 import streamlit_authenticator as stauth
 import time
 import hashlib
+from config import CONFIG
+from utils.security_utils import get_query_hash, validate_query_size, check_rate_limit
+from utils.logging_utils import logger, log_query_execution, log_error_context
 
 # ---------------- PAGE CONFIG ---------------- #
 st.set_page_config(page_title="Snowflake Reporting", layout="wide")
@@ -29,6 +32,12 @@ def get_session():
         return session
 
 session = get_session()
+
+# Cached query runner: caches pandas result for a query hash
+@st.cache_data(ttl=CONFIG.get("cache_ttl_seconds", 300), show_spinner=False)
+def run_query_cached(query_hash: str, query: str):
+    # Use the outer-scope `session` to execute the query. Avoid passing session into cache.
+    return session.sql(query).to_pandas()
 
 # ---------------- LOAD CONFIG FROM SECRETS ---------------- #
 
@@ -529,7 +538,7 @@ with main:
         st.warning("❌ Query was cancelled by user.")
         st.stop()
 
-# Handle run query
+    # Handle run query: run a preview by default, allow loading full results
     if run_clicked:
         if validation_error:
             st.error("⚠️ Please provide value for all required filters.")
@@ -540,44 +549,95 @@ with main:
         if where_clause:
             query += f" WHERE {where_clause}"
 
-        st.session_state.query_sql = query
-        st.session_state.query_running = True
-        st.session_state.audit_active = True
-        st.session_state.audit_start_time = time.time()
-        st.session_state.audit_query_sql = query
-        st.session_state.audit_report_name = report_name
-        st.rerun()  # Rerun to update UI and show enabled cancel button
+        # Rate limit check
+        allowed, msg = check_rate_limit(st.session_state.get("username", "unknown"), CONFIG.get("max_queries_per_hour", 50))
+        if not allowed:
+            st.error(msg)
+            st.stop()
 
-    # Execute query if running
+        # Validate full query size (prevent DoS)
+        valid_q, vmsg = validate_query_size(query, CONFIG.get("max_query_size_bytes", 50000))
+        if not valid_q:
+            st.error(vmsg)
+            st.stop()
+
+        # Run a preview (LIMIT) to avoid fetching massive datasets by default
+        preview_rows = CONFIG.get("page_size_rows", 1000)
+        preview_query = query + f" LIMIT {preview_rows}"
+        preview_hash = get_query_hash(preview_query)
+
+        t0 = time.time()
+        try:
+            preview_df = run_query_cached(preview_hash, preview_query)
+            t_sql = time.time()
+            preview_df = decrypt_dataframe(preview_df, session, table_name)
+            t_dec = time.time()
+
+            st.dataframe(preview_df)
+            st.write(f"Preview • SQL: {t_sql-t0:.2f}s • Decrypt: {t_dec-t_sql:.2f}s • Rows: {len(preview_df)}")
+
+        except Exception as e:
+            st.error(f"Preview failed: {e}")
+            try:
+                log_error_context(logger, st.session_state.get("username", "unknown"), "preview_query", e, {"report": report_name})
+            except Exception:
+                pass
+
+        # Allow user to load full results (this will trigger the full query execution flow)
+        if st.button("Load Full Results", use_container_width=True):
+            st.session_state.query_sql = query
+            st.session_state.query_running = True
+            st.session_state.audit_active = True
+            st.session_state.audit_start_time = time.time()
+            st.session_state.audit_query_sql = query
+            st.session_state.audit_report_name = report_name
+            st.rerun()  # Rerun to start the full execution path
+
+    # Execute query if running (full results)
     if st.session_state.query_running and st.session_state.query_future is None:
-        
         def execute_query(q):
-            return session.sql(q).to_pandas()
-        
+            qhash = get_query_hash(q)
+            return run_query_cached(qhash, q)
+
         query = st.session_state.query_sql
 
-        with st.spinner("Running query... ⏳"):
+        with st.spinner("Running full query... ⏳"):
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(execute_query, query)
                 st.session_state.query_future = future
                 try:
-                    # 3 minutes timeout enforced
-                    df = future.result(timeout=180)
+                    timeout_seconds = CONFIG.get("query_timeout_seconds", 180)
+                    t_start = time.time()
+                    df = future.result(timeout=timeout_seconds)
+                    t_sql_end = time.time()
+
                     st.session_state.query_running = False
                     st.session_state.query_future = None
 
-                    # Dynamic PII Decrypt
+                    # Dynamic PII Decrypt (timed)
+                    t_dec_start = time.time()
                     df = decrypt_dataframe(df, session, table_name)
+                    t_dec_end = time.time()
+
                     st.dataframe(df)
 
                     csv = df.to_csv(index=False).encode("utf-8")
                     st.download_button("Download CSV", csv, file_name=f"{report_name}.csv")
 
-                    # Log audit
+                    # Log audit and application logging
                     try:
                         finalize_audit(session, st.session_state, success=True, df=df)
                     except Exception:
                         pass
+
+                    try:
+                        exec_time = round(time.time() - t_start, 2)
+                        log_query_execution(logger, st.session_state.get("username", "unknown"), report_name, exec_time, len(df), success=True)
+                    except Exception:
+                        pass
+
+                    # Show timings
+                    st.write(f"Full Query • SQL: {t_sql_end-t_start:.2f}s • Decrypt: {t_dec_end-t_dec_start:.2f}s • Total: {time.time()-t_start:.2f}s")
 
                 except concurrent.futures.TimeoutError:
                     st.session_state.query_running = False
@@ -589,7 +649,7 @@ with main:
                     except Exception:
                         pass
 
-                    st.error("⚠️ Query execution took too long (>3 minutes) and was cancelled. Please refine your filters.")
+                    st.error(f"⚠️ Query execution took too long (>{CONFIG.get('query_timeout_seconds',180)}s) and was cancelled. Please refine your filters.")
 
                 except Exception as e:
                     st.session_state.query_running = False
@@ -600,3 +660,10 @@ with main:
                         finalize_audit(session, st.session_state, success=False)
                     except Exception:
                         pass
+
+                    try:
+                        log_error_context(logger, st.session_state.get("username", "unknown"), "query_execution", e, {"report": report_name})
+                    except Exception:
+                        pass
+
+                    st.error(f"❌ Query failed: {e}")
