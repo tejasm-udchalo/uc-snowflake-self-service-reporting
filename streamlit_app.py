@@ -96,7 +96,7 @@ with st.sidebar.expander("🔑 Forgot Password"):
                         """
                         SELECT USERNAME
                         FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
-                        WHERE USERNAME = %s
+                        WHERE USERNAME = ?
                         """,
                         params=[fp_username]
                     )
@@ -117,8 +117,8 @@ with st.sidebar.expander("🔑 Forgot Password"):
                         execute_dml(
                             """
                             UPDATE ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
-                            SET PASSWORD_HASH = %s
-                            WHERE USERNAME = %s
+                            SET PASSWORD_HASH = ?
+                            WHERE USERNAME = ?
                             """,
                             params=[password_hash, fp_username]
                         )
@@ -185,7 +185,7 @@ with st.sidebar.expander("👤 Register New User"):
                         """
                         SELECT USERNAME
                         FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
-                        WHERE USERNAME = %s
+                        WHERE USERNAME = ?
                         """,
                         params=[reg_username]
                     )
@@ -209,10 +209,10 @@ with st.sidebar.expander("👤 Register New User"):
                             )
                             SELECT
                                 UUID_STRING(),
-                                %s,
-                                %s,
-                                %s,
-                                %s,
+                                ?,
+                                ?,
+                                ?,
+                                ?,
                                 'PENDING'
                             """,
                             params=[reg_username, reg_firstname, reg_lastname, password_hash]
@@ -236,7 +236,7 @@ if st.session_state["authentication_status"]:
         """
         SELECT IS_USER_AUTHORIZED
         FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
-        WHERE USERNAME = %s
+        WHERE USERNAME = ?
         """,
         params=[logged_user]
     )

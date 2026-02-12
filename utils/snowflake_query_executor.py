@@ -7,9 +7,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 def get_active_session():
-    """
-    Ensures valid Snowflake session exists
-    """
+
     if "sf_session" not in st.session_state:
         st.session_state.sf_session = get_snowflake_session()
 
@@ -23,44 +21,52 @@ def _reconnect_session():
 
 
 def execute_select(query, params=None, retries=1):
-    """
-    Safe SELECT executor with retry + reconnection
-    """
+
     try:
         session = get_active_session()
 
         if params:
             return session.sql(query, params=params).to_pandas()
+
         return session.sql(query).to_pandas()
 
     except Exception as e:
+
         error_msg = str(e)
 
         if "Authentication token has expired" in error_msg and retries > 0:
             session = _reconnect_session()
-            return session.sql(query, params=params).to_pandas()
+
+            if params:
+                return session.sql(query, params=params).to_pandas()
+
+            return session.sql(query).to_pandas()
 
         logger.error(f"SELECT Query Failed: {error_msg}")
         raise e
 
 
 def execute_dml(query, params=None, retries=1):
-    """
-    Safe INSERT / UPDATE / DELETE executor
-    """
+
     try:
         session = get_active_session()
 
         if params:
             return session.sql(query, params=params).collect()
+
         return session.sql(query).collect()
 
     except Exception as e:
+
         error_msg = str(e)
 
         if "Authentication token has expired" in error_msg and retries > 0:
             session = _reconnect_session()
-            return session.sql(query, params=params).collect()
+
+            if params:
+                return session.sql(query, params=params).collect()
+
+            return session.sql(query).collect()
 
         logger.error(f"DML Query Failed: {error_msg}")
         raise e
