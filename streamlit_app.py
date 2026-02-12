@@ -5,7 +5,7 @@ from utils.audit_logger_utils import finalize_audit
 import concurrent.futures
 import streamlit_authenticator as stauth
 import time
-import traceback
+import hashlib
 
 # ---------------- PAGE CONFIG ---------------- #
 st.set_page_config(page_title="Snowflake Reporting", layout="wide")
@@ -100,7 +100,7 @@ with st.sidebar.expander("🔑 Forgot Password"):
                     if user_df.empty:
                         st.error("Username not found")
                     else:
-                        import secrets, string, hashlib
+                        import secrets, string
                         # Generate random temp password
                         alphabet = string.ascii_letters + string.digits
                         temp_password = ''.join(
@@ -125,7 +125,9 @@ with st.sidebar.expander("🔑 Forgot Password"):
         if st.session_state.fp_temp_password:
             st.success("Temporary password generated")
             st.info(f"Temporary Password: {st.session_state.fp_temp_password}")
-
+            st.warning(
+                "Please login using this temporary password and contact Data Team to set your new password."
+            )
             # Clear after showing once
             st.session_state.fp_temp_password = None
 
@@ -137,14 +139,13 @@ with st.sidebar.expander("🔑 Forgot Password"):
 if "clear_reg_form" not in st.session_state:
     st.session_state.clear_reg_form = False
 
-if "reg_temp_password" not in st.session_state:
-    st.session_state.reg_temp_password = None
-
 # ---- Clear form BEFORE widgets render ----
 if st.session_state.clear_reg_form:
     st.session_state.reg_username = ""
     st.session_state.reg_firstname = ""
     st.session_state.reg_lastname = ""
+    st.session_state.reg_password = ""
+    st.session_state.reg_confirm_password = ""
     st.session_state.clear_reg_form = False
 
 with st.sidebar.expander("👤 Register New User"):
@@ -154,11 +155,24 @@ with st.sidebar.expander("👤 Register New User"):
             reg_username = st.text_input("Username", key="reg_username")
             reg_firstname = st.text_input("First Name", key="reg_firstname")
             reg_lastname = st.text_input("Last Name", key="reg_lastname")
+            reg_password = st.text_input(
+                "Password",
+                type="password",
+                key="reg_password"
+            )
+            reg_confirm_password = st.text_input(
+                "Confirm Password",
+                type="password",
+                key="reg_confirm_password"
+            )
             submit_reg = st.form_submit_button("Register User")
-
             if submit_reg:
                 if not reg_username:
                     st.error("Username required")
+                elif reg_password != reg_confirm_password:
+                    st.error("Passwords do not match")
+                elif len(reg_password) < 6:
+                    st.error("Password must be at least 6 characters")
                 else:
                     # Check if username exists
                     exists_df = session.sql(f"""
@@ -169,14 +183,8 @@ with st.sidebar.expander("👤 Register New User"):
                     if not exists_df.empty:
                         st.error("Username already exists")
                     else:
-                        import secrets, string, hashlib
-                        # Generate password
-                        alphabet = string.ascii_letters + string.digits
-                        generated_password = ''.join(
-                            secrets.choice(alphabet) for _ in range(10)
-                        )
                         password_hash = hashlib.sha256(
-                            generated_password.encode()
+                            reg_password.encode()
                         ).hexdigest()
                         # Insert new user
                         session.sql(f"""
@@ -197,18 +205,12 @@ with st.sidebar.expander("👤 Register New User"):
                                 '{password_hash}',
                                 'PENDING'
                         """).collect()
+                        st.success("Registration submitted successfully")
+                        st.info("Your account is pending admin approval.")
+
                         # Store password for display AFTER rerun
-                        st.session_state.reg_temp_password = generated_password
                         st.session_state.clear_reg_form = True
                         st.rerun()
-
-        # Show password AFTER rerun
-        if st.session_state.reg_temp_password:
-            st.success("Registration submitted successfully")
-            st.info("Your account is pending admin approval.")
-
-            # Clear once shown
-            st.session_state.reg_temp_password = None
 
     except Exception as e:
         st.error(e)
