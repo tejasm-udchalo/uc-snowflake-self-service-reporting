@@ -155,8 +155,7 @@ with st.sidebar.expander("👤 Register New User"):
                                 LAST_NAME,
                                 PASSWORD_HASH
                             )
-                            VALUES
-                            (
+                            SELECT
                                 UUID_STRING(),
                                 '{reg_username}',
                                 '{reg_firstname}',
