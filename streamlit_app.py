@@ -2,6 +2,7 @@ import streamlit as st
 from utils.snowflake_session import get_snowflake_session
 from utils.decrypt_utils import decrypt_dataframe
 from utils.audit_logger_utils import finalize_audit
+from utils.snowflake_query_executor import execute_select, execute_dml
 import concurrent.futures
 import streamlit_authenticator as stauth
 import time
@@ -91,11 +92,14 @@ with st.sidebar.expander("🔑 Forgot Password"):
                     st.error("Username is required")
                 else:
                     # Check user exists
-                    user_df = session.sql(f"""
+                    user_df = execute_select(
+                        """
                         SELECT USERNAME
                         FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
-                        WHERE USERNAME = '{fp_username}'
-                    """).to_pandas()
+                        WHERE USERNAME = %s
+                        """,
+                        params=[fp_username]
+                    )
                     if user_df.empty:
                         st.error("Username not found")
                     else:
@@ -110,11 +114,14 @@ with st.sidebar.expander("🔑 Forgot Password"):
                             temp_password.encode()
                         ).hexdigest()
                         # Update password in Snowflake
-                        session.sql(f"""
+                        execute_dml(
+                            """
                             UPDATE ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
-                            SET PASSWORD_HASH = '{password_hash}'
-                            WHERE USERNAME = '{fp_username}'
-                        """).collect()
+                            SET PASSWORD_HASH = %s
+                            WHERE USERNAME = %s
+                            """,
+                            params=[password_hash, fp_username]
+                        )
                         # Store output for next rerun
                         st.session_state.fp_temp_password = temp_password
                         st.session_state.clear_fp_form = True
@@ -174,11 +181,14 @@ with st.sidebar.expander("👤 Register New User"):
                     st.error("Password must be at least 6 characters")
                 else:
                     # Check if username exists
-                    exists_df = session.sql(f"""
+                    exists_df = execute_select(
+                        """
                         SELECT USERNAME
                         FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
-                        WHERE USERNAME = '{reg_username}'
-                    """).to_pandas()
+                        WHERE USERNAME = %s
+                        """,
+                        params=[reg_username]
+                    )
                     if not exists_df.empty:
                         st.error("Username already exists")
                     else:
@@ -186,7 +196,8 @@ with st.sidebar.expander("👤 Register New User"):
                             reg_password.encode()
                         ).hexdigest()
                         # Insert new user
-                        session.sql(f"""
+                        execute_dml(
+                            """
                             INSERT INTO ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
                             (
                                 USER_ID,
@@ -198,12 +209,14 @@ with st.sidebar.expander("👤 Register New User"):
                             )
                             SELECT
                                 UUID_STRING(),
-                                '{reg_username}',
-                                '{reg_firstname}',
-                                '{reg_lastname}',
-                                '{password_hash}',
+                                %s,
+                                %s,
+                                %s,
+                                %s,
                                 'PENDING'
-                        """).collect()
+                            """,
+                            params=[reg_username, reg_firstname, reg_lastname, password_hash]
+                        )
                         st.success("Registration submitted successfully")
                         st.info("Your account is pending admin approval.")
 
@@ -219,11 +232,14 @@ if st.session_state["authentication_status"]:
     # Get logged in username correctly
     logged_user = st.session_state.get("username")
     # Check authorization from Snowflake
-    auth_status_df = session.sql(f"""
+    auth_status_df = execute_select(
+        """
         SELECT IS_USER_AUTHORIZED
         FROM ANALYTICS.GOLD.STREAMLIT_USER_DETAILS
-        WHERE USERNAME = '{logged_user}'
-    """).to_pandas()
+        WHERE USERNAME = %s
+        """,
+        params=[logged_user]
+    )
     if auth_status_df.empty:
         st.error("User not found in authorization table")
         authenticator.logout('Logout', 'main')
