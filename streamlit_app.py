@@ -512,6 +512,10 @@ with main:
         st.session_state.query_running = False
     if "query_sql" not in st.session_state:
         st.session_state.query_sql = None
+    if "download_csv_data" not in st.session_state:
+        st.session_state.download_csv_data = None
+    if "download_csv_filename" not in st.session_state:
+        st.session_state.download_csv_filename = None
 
     col_run, col_cancel = st.columns([0.5, 0.5])
     with col_run:
@@ -581,7 +585,9 @@ with main:
                 pass
 
         # Download full dataset directly (one-click download)
-        if st.button("📥 Download Full Dataset as CSV", use_container_width=True):
+        download_clicked = st.button("📥 Download Full Dataset as CSV", use_container_width=True)
+        
+        if download_clicked:
             with st.spinner("Preparing download..."):
                 try:
                     qhash = get_query_hash(query)
@@ -589,13 +595,8 @@ with main:
                     full_df = decrypt_dataframe(full_df, session, table_name)
                     
                     csv = full_df.to_csv(index=False).encode("utf-8")
-                    st.download_button(
-                        label="💾 Click here to save CSV",
-                        data=csv,
-                        file_name=f"{report_name}.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
+                    st.session_state.download_csv_data = csv
+                    st.session_state.download_csv_filename = f"{report_name}.csv"
                     
                     # Log audit
                     try:
@@ -608,11 +609,21 @@ with main:
                         log_query_execution(logger, st.session_state.get("username", "unknown"), report_name, exec_time, len(full_df), success=True)
                     except Exception:
                         pass
-                            
+                        
                 except Exception as e:
                     st.error(f"❌ Download failed: {e}")
                     try:
                         log_error_context(logger, st.session_state.get("username", "unknown"), "download_query", e, {"report": report_name})
                     except Exception:
                         pass
+        
+        # Show download button if data is ready
+        if st.session_state.download_csv_data:
+            st.download_button(
+                label="💾 Click here to save CSV",
+                data=st.session_state.download_csv_data,
+                file_name=st.session_state.download_csv_filename,
+                mime="text/csv",
+                use_container_width=True
+            )
 
