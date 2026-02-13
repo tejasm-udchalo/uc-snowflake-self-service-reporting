@@ -562,7 +562,7 @@ with main:
             st.stop()
 
         # Run a preview (LIMIT 50 rows) to show sample data
-        preview_rows = CONFIG.get("page_size_rows", 50)
+        preview_rows = 50
         preview_query = query + f" LIMIT {preview_rows}"
         preview_hash = get_query_hash(preview_query)
 
@@ -580,85 +580,39 @@ with main:
             except Exception:
                 pass
 
-        # Offer direct download of full dataset
-        if st.button("⬇️ Download Full Dataset", use_container_width=True):
-            st.session_state.query_sql = query
-            st.session_state.query_running = True
-            st.session_state.audit_active = True
-            st.session_state.audit_start_time = time.time()
-            st.session_state.audit_query_sql = query
-            st.session_state.audit_report_name = report_name
-            st.rerun()  # Rerun to fetch and download full data
-
-    # Execute query if running (full results)
-    if st.session_state.query_running and st.session_state.query_future is None:
-        def execute_query(q):
-            qhash = get_query_hash(q)
-            return run_query_cached(qhash, q)
-
-        query = st.session_state.query_sql
-
-        with st.spinner("Running full query... ⏳"):
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(execute_query, query)
-                st.session_state.query_future = future
+        # Download full dataset directly (one-click download)
+        if st.button("📥 Download Full Dataset as CSV", use_container_width=True):
+            with st.spinner("Preparing download..."):
                 try:
-                    timeout_seconds = CONFIG.get("query_timeout_seconds", 180)
-                    t_start = time.time()
-                    df = future.result(timeout=timeout_seconds)
-                    t_sql_end = time.time()
-
-                    st.session_state.query_running = False
-                    st.session_state.query_future = None
-
-                    # Dynamic PII Decrypt (timed)
-                    t_dec_start = time.time()
-                    df = decrypt_dataframe(df, session, table_name)
-                    t_dec_end = time.time()
-
-                    st.subheader("Full Dataset")
-                    st.dataframe(df)
-
-                    csv = df.to_csv(index=False).encode("utf-8")
-                    st.download_button("📥 Download CSV", csv, file_name=f"{report_name}.csv", use_container_width=True)
-
-                    # Log audit and application logging
-                    try:
-                        finalize_audit(session, st.session_state, success=True, df=df)
-                    except Exception:
-                        pass
-
-                    try:
-                        exec_time = round(time.time() - t_start, 2)
-                        log_query_execution(logger, st.session_state.get("username", "unknown"), report_name, exec_time, len(df), success=True)
-                    except Exception:
-                        pass
-
-                except concurrent.futures.TimeoutError:
-                    st.session_state.query_running = False
-                    st.session_state.query_future = None
-
+                    qhash = get_query_hash(query)
+                    full_df = run_query_cached(qhash, query)
+                    full_df = decrypt_dataframe(full_df, session, table_name)
+                    
+                    csv = full_df.to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        label="💾 Click here to save CSV",
+                        data=csv,
+                        file_name=f"{report_name}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                    
                     # Log audit
                     try:
-                        finalize_audit(session, st.session_state, canceled=True)
+                        finalize_audit(session, st.session_state, success=True, df=full_df)
                     except Exception:
                         pass
-
-                    st.error(f"⚠️ Query execution took too long (>{CONFIG.get('query_timeout_seconds',180)}s) and was cancelled. Please refine your filters.")
-
+                    
+                    try:
+                        exec_time = round(time.time() - time.time(), 2)
+                        log_query_execution(logger, st.session_state.get("username", "unknown"), report_name, exec_time, len(full_df), success=True)
+                    except Exception:
+                        pass
+                            
                 except Exception as e:
-                    st.session_state.query_running = False
-                    st.session_state.query_future = None
-
-                    # Log audit
+                    st.error(f"❌ Download failed: {e}")
                     try:
-                        finalize_audit(session, st.session_state, success=False)
+                        log_error_context(logger, st.session_state.get("username", "unknown"), "download_query", e, {"report": report_name})
                     except Exception:
                         pass
 
-                    try:
-                        log_error_context(logger, st.session_state.get("username", "unknown"), "query_execution", e, {"report": report_name})
-                    except Exception:
-                        pass
-
-                    st.error(f"❌ Query failed: {e}")
