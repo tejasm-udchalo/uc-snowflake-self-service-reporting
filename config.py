@@ -11,7 +11,7 @@ BASE_CONFIG: Dict[str, Any] = {
     "cache_ttl_seconds": 300,
     "max_query_size_bytes": 50000,
     "max_queries_per_hour": 50,
-    "page_size_rows": 1000,
+    "page_size_rows": 50,
     "export_formats": ["csv", "parquet"],
     "audit_enabled": True,
     "compression_threshold_bytes": 100_000_000,

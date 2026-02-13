@@ -561,20 +561,17 @@ with main:
             st.error(vmsg)
             st.stop()
 
-        # Run a preview (LIMIT) to avoid fetching massive datasets by default
-        preview_rows = CONFIG.get("page_size_rows", 1000)
+        # Run a preview (LIMIT 50 rows) to show sample data
+        preview_rows = CONFIG.get("page_size_rows", 50)
         preview_query = query + f" LIMIT {preview_rows}"
         preview_hash = get_query_hash(preview_query)
 
-        t0 = time.time()
         try:
             preview_df = run_query_cached(preview_hash, preview_query)
-            t_sql = time.time()
             preview_df = decrypt_dataframe(preview_df, session, table_name)
-            t_dec = time.time()
 
+            st.subheader("Preview (First 50 rows)")
             st.dataframe(preview_df)
-            st.write(f"Preview • SQL: {t_sql-t0:.2f}s • Decrypt: {t_dec-t_sql:.2f}s • Rows: {len(preview_df)}")
 
         except Exception as e:
             st.error(f"Preview failed: {e}")
@@ -583,15 +580,15 @@ with main:
             except Exception:
                 pass
 
-        # Allow user to load full results (this will trigger the full query execution flow)
-        if st.button("Load Full Results", use_container_width=True):
+        # Offer direct download of full dataset
+        if st.button("⬇️ Download Full Dataset", use_container_width=True):
             st.session_state.query_sql = query
             st.session_state.query_running = True
             st.session_state.audit_active = True
             st.session_state.audit_start_time = time.time()
             st.session_state.audit_query_sql = query
             st.session_state.audit_report_name = report_name
-            st.rerun()  # Rerun to start the full execution path
+            st.rerun()  # Rerun to fetch and download full data
 
     # Execute query if running (full results)
     if st.session_state.query_running and st.session_state.query_future is None:
@@ -619,10 +616,11 @@ with main:
                     df = decrypt_dataframe(df, session, table_name)
                     t_dec_end = time.time()
 
+                    st.subheader("Full Dataset")
                     st.dataframe(df)
 
                     csv = df.to_csv(index=False).encode("utf-8")
-                    st.download_button("Download CSV", csv, file_name=f"{report_name}.csv")
+                    st.download_button("📥 Download CSV", csv, file_name=f"{report_name}.csv", use_container_width=True)
 
                     # Log audit and application logging
                     try:
@@ -635,9 +633,6 @@ with main:
                         log_query_execution(logger, st.session_state.get("username", "unknown"), report_name, exec_time, len(df), success=True)
                     except Exception:
                         pass
-
-                    # Show timings
-                    st.write(f"Full Query • SQL: {t_sql_end-t_start:.2f}s • Decrypt: {t_dec_end-t_dec_start:.2f}s • Total: {time.time()-t_start:.2f}s")
 
                 except concurrent.futures.TimeoutError:
                     st.session_state.query_running = False
