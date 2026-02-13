@@ -516,6 +516,10 @@ with main:
         st.session_state.download_csv_data = None
     if "download_csv_filename" not in st.session_state:
         st.session_state.download_csv_filename = None
+    if "query_to_run" not in st.session_state:
+        st.session_state.query_to_run = None
+    if "preview_df" not in st.session_state:
+        st.session_state.preview_df = None
 
     col_run, col_cancel = st.columns([0.5, 0.5])
     with col_run:
@@ -565,6 +569,9 @@ with main:
             st.error(vmsg)
             st.stop()
 
+        # Store query for later use
+        st.session_state.query_to_run = query
+
         # Run a preview (LIMIT 50 rows) to show sample data
         preview_rows = 50
         preview_query = query + f" LIMIT {preview_rows}"
@@ -573,9 +580,7 @@ with main:
         try:
             preview_df = run_query_cached(preview_hash, preview_query)
             preview_df = decrypt_dataframe(preview_df, session, table_name)
-
-            st.subheader("Preview (First 50 rows)")
-            st.dataframe(preview_df)
+            st.session_state.preview_df = preview_df
 
         except Exception as e:
             st.error(f"Preview failed: {e}")
@@ -584,19 +589,23 @@ with main:
             except Exception:
                 pass
 
+    # Show preview and download button if we have data
+    if st.session_state.preview_df is not None and st.session_state.query_to_run:
+        st.subheader("Preview (First 50 rows)")
+        st.dataframe(st.session_state.preview_df)
+
         # Download full dataset directly (one-click download)
-        download_clicked = st.button("📥 Download Full Dataset as CSV", use_container_width=True)
-        
-        if download_clicked:
+        if st.button("📥 Download Full Dataset as CSV", use_container_width=True):
             with st.spinner("Preparing download..."):
                 try:
-                    qhash = get_query_hash(query)
-                    full_df = run_query_cached(qhash, query)
+                    qhash = get_query_hash(st.session_state.query_to_run)
+                    full_df = run_query_cached(qhash, st.session_state.query_to_run)
                     full_df = decrypt_dataframe(full_df, session, table_name)
                     
                     csv = full_df.to_csv(index=False).encode("utf-8")
                     st.session_state.download_csv_data = csv
                     st.session_state.download_csv_filename = f"{report_name}.csv"
+                    st.success(f"✅ Download ready! {len(full_df)} rows")
                     
                     # Log audit
                     try:
@@ -616,14 +625,14 @@ with main:
                         log_error_context(logger, st.session_state.get("username", "unknown"), "download_query", e, {"report": report_name})
                     except Exception:
                         pass
-        
-        # Show download button if data is ready
-        if st.session_state.download_csv_data:
-            st.download_button(
-                label="💾 Click here to save CSV",
-                data=st.session_state.download_csv_data,
-                file_name=st.session_state.download_csv_filename,
-                mime="text/csv",
-                use_container_width=True
-            )
+    
+    # Show download button if CSV data is ready
+    if st.session_state.download_csv_data:
+        st.download_button(
+            label="💾 Click here to save CSV",
+            data=st.session_state.download_csv_data,
+            file_name=st.session_state.download_csv_filename,
+            mime="text/csv",
+            use_container_width=True
+        )
 
